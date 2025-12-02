@@ -1,0 +1,42 @@
+Name,SKU,Barcode,Description,Category,SubCategory,Brand,Price,Cost,Stock,MinStock,ReorderLevel,Unit,HasExpiry,ExpiryDate,ExpiryAlertDays,IsFeatured,IsActive
+Paracetamol 500mg Tablets,MED001,8901234567890,Pain relief and fever reducer medicine,Medicine,Tablets,Generic Pharma,2.99,1.50,450,50,100,pcs,TRUE,2025-12-31,30,TRUE,TRUE
+Amoxicillin 250mg Capsules,MED002,8901234567891,Antibiotic for bacterial infections,Medicine,Capsules,Amoxil,15.99,10.50,200,30,60,pcs,TRUE,2025-10-15,30,FALSE,TRUE
+Ibuprofen 400mg Tablets,MED003,8901234567892,Anti-inflammatory pain reliever,Medicine,Tablets,Advil,5.99,3.25,350,40,80,pcs,TRUE,2026-03-20,30,TRUE,TRUE
+Cough Syrup 100ml,MED004,8901234567893,Relief from dry and wet cough,Medicine,Syrups,Benadryl,8.50,5.00,180,25,50,bottle,TRUE,2025-08-10,30,FALSE,TRUE
+Vitamin C 1000mg,SUP001,8901234567894,Immune system support supplement,Supplements,Vitamins,Nature Made,12.99,8.00,300,35,70,pcs,TRUE,2026-06-15,60,TRUE,TRUE
+Vitamin D3 2000 IU,SUP002,8901234567895,Bone health and immunity booster,Supplements,Vitamins,Nature's Bounty,14.99,9.50,250,30,60,pcs,TRUE,2026-05-20,60,FALSE,TRUE
+Omega-3 Fish Oil,SUP003,8901234567896,Heart health supplement,Supplements,Soft Gels,Nordic Naturals,24.99,16.00,150,20,40,pcs,TRUE,2026-01-25,60,FALSE,TRUE
+Multivitamin Complex,SUP004,8901234567897,Complete daily nutritional supplement,Supplements,Tablets,Centrum,19.99,12.50,280,35,70,pcs,TRUE,2026-04-10,60,TRUE,TRUE
+Hand Sanitizer 500ml,HYG001,8901234567898,70% alcohol-based hand sanitizer,Hygiene,Sanitizers,Dettol,5.99,3.50,420,60,120,bottle,FALSE,,,0,TRUE,TRUE
+Hand Sanitizer 100ml Pocket Size,HYG002,8901234567899,Portable hand sanitizer,Hygiene,Sanitizers,Purell,2.49,1.25,500,80,150,bottle,FALSE,,,0,FALSE,TRUE
+Antibacterial Soap 250g,HYG003,8901234567800,Kills 99.9% germs,Hygiene,Soaps,Lifebuoy,3.99,2.00,350,50,100,pcs,FALSE,,,0,FALSE,TRUE
+Face Masks Surgical 50pcs,SAF001,8901234567801,3-ply disposable face masks,Safety,Masks,3M,19.99,12.00,800,100,200,box,FALSE,,,0,TRUE,TRUE
+N95 Respirator Masks 20pcs,SAF002,8901234567802,High filtration protective masks,Safety,Masks,3M,45.99,30.00,150,20,40,box,FALSE,,,0,TRUE,TRUE
+Latex Gloves Box 100pcs,SAF003,8901234567803,Medical examination gloves,Safety,Gloves,Ansell,24.99,15.50,200,30,60,box,FALSE,,,0,FALSE,TRUE
+Digital Thermometer,DEV001,8901234567804,Fast and accurate temperature reading,Medical Devices,Thermometers,Omron,15.99,10.00,180,25,50,pcs,FALSE,,,0,TRUE,TRUE
+Blood Pressure Monitor,DEV002,8901234567805,Automatic digital BP monitor,Medical Devices,Monitors,Omron,45.99,30.00,85,10,20,pcs,FALSE,,,0,TRUE,TRUE
+Pulse Oximeter,DEV003,8901234567806,Measures oxygen saturation and pulse,Medical Devices,Monitors,Beurer,35.99,22.00,120,15,30,pcs,FALSE,,,0,FALSE,TRUE
+Glucometer Blood Sugar Monitor,DEV004,8901234567807,Diabetes blood glucose meter,Medical Devices,Monitors,Accu-Chek,39.99,25.00,95,12,25,pcs,FALSE,,,0,TRUE,TRUE
+First Aid Kit Complete,MED005,8901234567808,Comprehensive emergency first aid kit,Medical Supplies,First Aid,Johnson & Johnson,24.99,15.00,140,20,40,kit,FALSE,,,0,TRUE,TRUE
+Adhesive Bandages 100pcs,MED006,8901234567809,Sterile wound care bandages,Medical Supplies,Bandages,Band-Aid,6.99,4.00,380,50,100,box,FALSE,,,0,FALSE,TRUE
+Gauze Pads 4x4 inch 50pcs,MED007,8901234567810,Sterile cotton gauze pads,Medical Supplies,Bandages,Curad,8.99,5.50,280,40,80,box,FALSE,,,0,FALSE,TRUE
+Medical Tape 1 inch,MED008,8901234567811,Hypoallergenic adhesive tape,Medical Supplies,Tapes,3M,3.99,2.25,420,60,120,roll,FALSE,,,0,FALSE,TRUE
+Antiseptic Cream 50g,MED009,8901234567812,Prevents infection in minor cuts,Medicine,Creams,Neosporin,7.99,4.50,320,45,90,tube,TRUE,2025-09-30,30,FALSE,TRUE
+Hydrocortisone Cream 1%,MED010,8901234567813,Anti-itch and inflammation cream,Medicine,Creams,Cortizone,9.99,6.00,240,30,60,tube,TRUE,2025-11-20,30,FALSE,TRUE
+Allergy Relief Tablets,MED011,8901234567814,Antihistamine for allergy symptoms,Medicine,Tablets,Claritin,12.99,8.00,280,35,70,pcs,TRUE,2026-02-15,30,FALSE,TRUE
+Antacid Tablets,MED012,8901234567815,Fast relief from heartburn and indigestion,Medicine,Tablets,Tums,6.99,4.00,350,45,90,pcs,TRUE,2025-12-10,30,FALSE,TRUE
+Saline Nasal Spray,MED013,8901234567816,Relieves nasal congestion naturally,Medicine,Sprays,Ocean,5.99,3.50,280,35,70,bottle,TRUE,2026-01-05,30,FALSE,TRUE
+Eye Drops Lubricant,MED014,8901234567817,Relief for dry irritated eyes,Medicine,Drops,Refresh,8.99,5.50,220,28,56,bottle,TRUE,2025-10-25,30,FALSE,TRUE
+Hydrogen Peroxide 500ml,MED015,8901234567818,Antiseptic wound cleaner,Medical Supplies,Disinfectants,Generic,3.99,2.00,380,50,100,bottle,FALSE,,,0,FALSE,TRUE
+Rubbing Alcohol 70% 500ml,MED016,8901234567819,Isopropyl alcohol disinfectant,Medical Supplies,Disinfectants,Generic,4.99,2.50,420,55,110,bottle,FALSE,,,0,FALSE,TRUE
+Cotton Balls 200pcs,MED017,8901234567820,Sterile absorbent cotton,Medical Supplies,Cotton Products,Q-tips,4.99,2.75,450,60,120,bag,FALSE,,,0,FALSE,TRUE
+Cotton Swabs 500pcs,MED018,8901234567821,Double-tipped cotton applicators,Medical Supplies,Cotton Products,Q-tips,3.99,2.00,500,70,140,box,FALSE,,,0,FALSE,TRUE
+Elastic Bandage 3 inch,MED019,8901234567822,Compression wrap for sprains,Medical Supplies,Bandages,ACE,5.99,3.50,220,30,60,roll,FALSE,,,0,FALSE,TRUE
+Cold Hot Pack Reusable,MED020,8901234567823,Therapy for pain and swelling,Medical Supplies,Therapy,TheraPearl,12.99,7.50,150,20,40,pcs,FALSE,,,0,FALSE,TRUE
+Probiotic Capsules,SUP005,8901234567824,Digestive health support,Supplements,Probiotics,Culturelle,29.99,18.00,180,22,45,pcs,TRUE,2026-03-30,60,FALSE,TRUE
+Calcium + Vitamin D,SUP006,8901234567825,Bone strength supplement,Supplements,Tablets,Caltrate,16.99,10.50,260,32,65,pcs,TRUE,2026-05-12,60,FALSE,TRUE
+Melatonin 5mg,SUP007,8901234567826,Sleep aid supplement,Supplements,Tablets,Nature Made,11.99,7.00,300,38,76,pcs,TRUE,2026-04-18,60,FALSE,TRUE
+Protein Powder 1kg,SUP008,8901234567827,Whey protein muscle builder,Supplements,Powders,Optimum Nutrition,49.99,32.00,95,12,25,container,TRUE,2026-07-22,90,TRUE,TRUE
+Baby Fever Reducer Drops,MED021,8901234567828,Infant pain and fever relief,Medicine,Pediatric,Tylenol,8.99,5.50,220,28,56,bottle,TRUE,2025-11-15,30,FALSE,TRUE
+Baby Diaper Rash Cream,MED022,8901234567829,Soothes and protects baby skin,Medicine,Pediatric,Desitin,9.99,6.00,280,35,70,tube,TRUE,2026-01-20,30,FALSE,TRUE
+

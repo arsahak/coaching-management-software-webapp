@@ -12,16 +12,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { FaSms, FaUserPlus } from "react-icons/fa";
 import {
-  IoIosArrowDown,
-  IoMdDocument,
-  IoMdHome,
-  IoMdMoon,
-  IoMdPeople,
-  IoMdSunny,
-} from "react-icons/io";
-import { MdPayment, MdQrCode, MdSettings } from "react-icons/md";
+  FaBoxOpen,
+  FaChartLine,
+  FaClipboardList,
+  FaShoppingCart,
+  FaTags,
+  FaUsers,
+} from "react-icons/fa";
+import { IoIosArrowDown, IoMdHome, IoMdMoon, IoMdSunny } from "react-icons/io";
+import { MdInventory, MdSettings } from "react-icons/md";
 import { RxDoubleArrowLeft } from "react-icons/rx";
 
 interface MenuItem {
@@ -36,42 +36,47 @@ interface MenuItem {
 const getMenuItems = (language: string): MenuItem[] => [
   {
     icon: <IoMdHome className="w-5 h-5" />,
-    label: getTranslation("dashboard", language),
+    label: "Dashboard",
     path: "/",
   },
   {
-    icon: <FaUserPlus className="w-5 h-5" />,
-    label: getTranslation("admission", language),
-    path: "/admission",
+    icon: <FaShoppingCart className="w-5 h-5" />,
+    label: "Orders",
+    path: "/orders",
   },
   {
-    icon: <IoMdPeople className="w-5 h-5" />,
-    label: getTranslation("student", language),
-    path: "/student",
+    icon: <FaBoxOpen className="w-5 h-5" />,
+    label: "Products",
+    path: "/products",
   },
   {
-    icon: <IoMdDocument className="w-5 h-5" />,
-    label: getTranslation("exam", language),
-    path: "/exam",
+    icon: <FaTags className="w-5 h-5" />,
+    label: "Categories",
+    path: "/categories",
   },
   {
-    icon: <MdPayment className="w-5 h-5" />,
-    label: getTranslation("fee", language),
-    path: "/fee",
+    icon: <MdInventory className="w-5 h-5" />,
+    label: "Inventory",
+    path: "/inventory",
   },
   {
-    icon: <MdQrCode className="w-5 h-5" />,
-    label: getTranslation("qrCode", language),
-    path: "/qr-code",
+    icon: <FaUsers className="w-5 h-5" />,
+    label: "Customers",
+    path: "/customers",
   },
   {
-    icon: <FaSms className="w-5 h-5" />,
-    label: getTranslation("Bulk SMS", language),
-    path: "/bluk-sms",
+    icon: <FaChartLine className="w-5 h-5" />,
+    label: "Analytics",
+    path: "/analytics",
+  },
+  {
+    icon: <FaClipboardList className="w-5 h-5" />,
+    label: "Reviews",
+    path: "/reviews",
   },
   {
     icon: <MdSettings className="w-5 h-5" />,
-    label: getTranslation("settings", language),
+    label: "Settings",
     path: "/settings",
   },
 ];
@@ -85,7 +90,7 @@ export default function Sidebar() {
     Record<string, boolean>
   >({});
   const [portfolio, setPortfolio] = useState<PortfolioData>({
-    appTitle: "সমীকরণ কোচিং",
+    appTitle: "Gyne Clinics",
     appLogo: "",
   });
   const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(true);
@@ -169,7 +174,7 @@ export default function Sidebar() {
                 >
                   {isLoadingPortfolio
                     ? "Loading..."
-                    : portfolio.appTitle || "সমীকরণ কোচিং"}
+                    : portfolio.appTitle || "Gyne Clinics"}
                 </h1>
               </div>
             )}

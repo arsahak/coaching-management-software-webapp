@@ -1,22 +1,22 @@
 "use client";
 import { useSidebar } from "@/lib/SidebarContext";
 import {
-  FaBoxOpen,
-  FaDollarSign,
-  FaShoppingCart,
-  FaUsers,
+    FaBoxOpen,
+    FaDollarSign,
+    FaShoppingCart,
+    FaUsers,
 } from "react-icons/fa";
 import { FaArrowTrendDown, FaArrowTrendUp } from "react-icons/fa6";
 import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
+    Area,
+    AreaChart,
+    Bar,
+    BarChart,
+    CartesianGrid,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis,
 } from "recharts";
 
 interface DashboardData {
@@ -44,7 +44,7 @@ interface EcommerceDashboardProps {
 
 const EcommerceDashboard = ({ data, session }: EcommerceDashboardProps) => {
   const { isDarkMode } = useSidebar();
-  const { stats, recentOrders, topProducts, salesData } = data;
+  const { stats, recentOrders = [], topProducts = [], salesData = [] } = data || {};
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -281,7 +281,7 @@ const EcommerceDashboard = ({ data, session }: EcommerceDashboardProps) => {
             <h3 className="text-lg font-semibold">Recent Orders</h3>
           </div>
           <div className="space-y-4">
-            {recentOrders.map((order) => (
+            {recentOrders?.map((order) => (
               <div
                 key={order._id}
                 className={`flex items-center justify-between p-4 rounded-lg ${
@@ -310,7 +310,7 @@ const EcommerceDashboard = ({ data, session }: EcommerceDashboardProps) => {
                 </div>
               </div>
             ))}
-            {recentOrders.length === 0 && (
+            {recentOrders?.length === 0 && (
                 <p className="text-center text-gray-500">No recent orders</p>
             )}
           </div>
@@ -328,7 +328,7 @@ const EcommerceDashboard = ({ data, session }: EcommerceDashboardProps) => {
             <h3 className="text-lg font-semibold">Top Products</h3>
           </div>
           <div className="space-y-4">
-            {topProducts.map((product, index) => (
+            {topProducts?.map((product, index) => (
               <div
                 key={index}
                 className={`flex items-center justify-between p-4 rounded-lg ${
@@ -352,7 +352,7 @@ const EcommerceDashboard = ({ data, session }: EcommerceDashboardProps) => {
                 </div>
               </div>
             ))}
-            {topProducts.length === 0 && (
+            {topProducts?.length === 0 && (
                 <p className="text-center text-gray-500">No sales data yet</p>
             )}
           </div>

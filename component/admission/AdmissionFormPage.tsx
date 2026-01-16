@@ -730,10 +730,10 @@ export default function AdmissionFormPage({
                 </label>
 
                 {/* Selected Subjects Display */}
-                {formData.subjects.length > 0 && (
+                {formData.subjects?.length > 0 && (
                   <div className="mb-4">
                     <div className="flex flex-wrap gap-2">
-                      {formData.subjects.map((subject) => (
+                      {formData.subjects?.map((subject) => (
                         <span
                           key={subject}
                           className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors duration-200 ${
@@ -779,7 +779,7 @@ export default function AdmissionFormPage({
                     isDarkMode ? "bg-gray-700/50" : "bg-gray-50"
                   }`}
                 >
-                  {availableSubjects.map((subject) => (
+                  {availableSubjects?.map((subject) => (
                     <label
                       key={subject}
                       className={`flex items-center gap-2 cursor-pointer p-2 rounded transition-colors duration-200 ${

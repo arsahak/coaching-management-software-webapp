@@ -3,7 +3,6 @@
 import { useLanguage } from "@/lib/LanguageContext";
 import { getTranslation } from "@/lib/translations";
 import { signIn } from "next-auth/react";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -215,33 +214,14 @@ const SigninPage = () => {
   };
 
   return (
-    <div className="fixed inset-0 h-screen w-screen overflow-auto flex items-center justify-center p-4">
-      {/* Background Image with Overlay */}
-      <div className="fixed inset-0 z-0 h-full w-full">
-        <Image
-          src="/image/loginbg.jpeg"
-          alt="Login Background"
-          fill
-          className="object-cover w-full h-full"
-          style={{ transform: 'rotate(-5deg)' }}
-          priority
-          quality={100}
-        />
-        {/* Multi-layer Blur Overlay */}
-        <div className="absolute inset-0 backdrop-blur-md bg-white/20"></div>
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-600/30 via-purple-600/25 to-pink-600/30" style={{ transform: 'rotate(-15deg) scale(1.5)', transformOrigin: 'center' }}></div>
-        <div className="absolute inset-0 backdrop-blur-sm"></div>
-      </div>
-
-      {/* Login Card with Glassmorphism */}
-      <div className="relative z-10 w-full max-w-md">
-        <div className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-md rounded-2xl shadow-2xl p-8 border border-white/20">
+    <div className="w-full max-w-md mx-auto p-8">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-3">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
             {getTranslation("signIn", language) || "Sign In"}
           </h1>
-          <p className="text-gray-600 dark:text-gray-300 text-base">
+          <p className="text-gray-600 dark:text-gray-400">
             {getTranslation("signInToContinue", language) ||
               "Sign in to continue to your account"}
           </p>
@@ -397,7 +377,7 @@ const SigninPage = () => {
           <button
             type="submit"
             disabled={isPending}
-            className="w-full bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
           >
             {isPending ? (
               <span className="flex items-center">
@@ -429,8 +409,18 @@ const SigninPage = () => {
           </button>
         </form>
 
-     
-     
+        {/* Sign Up Link */}
+        <div className="mt-6 text-center">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            {getTranslation("dontHaveAccount", language) ||
+              "Don't have an account?"}{" "}
+            <Link
+              href="/sign-up"
+              className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-semibold"
+            >
+              {getTranslation("signUp", language) || "Sign Up"}
+            </Link>
+          </p>
         </div>
       </div>
     </div>

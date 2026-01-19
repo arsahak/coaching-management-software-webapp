@@ -692,33 +692,6 @@ export default function AdmissionFormPage({
                 </div>
               </div>
 
-              {/* Class Field */}
-              <div className="mt-4">
-                <label
-                  className={`block text-sm font-medium mb-2 transition-colors duration-200 ${
-                    isDarkMode ? "text-gray-300" : "text-gray-700"
-                  }`}
-                >
-                  {getTranslation("class", language) || "Class"}
-                </label>
-                <input
-                  type="text"
-                  value={formData.class}
-                  onChange={(e) =>
-                    setFormData({ ...formData, class: e.target.value })
-                  }
-                  placeholder={
-                    getTranslation("classPlaceholder", language) ||
-                    "Enter student's class"
-                  }
-                  className={`w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
-                    isDarkMode
-                      ? "border-gray-600 bg-gray-700 text-white placeholder-gray-400"
-                      : "border-gray-300 bg-white text-gray-900 placeholder-gray-500"
-                  }`}
-                />
-              </div>
-
               {/* Subjects Section */}
               <div className="mt-4">
                 <label
@@ -730,10 +703,10 @@ export default function AdmissionFormPage({
                 </label>
 
                 {/* Selected Subjects Display */}
-                {formData.subjects?.length > 0 && (
+                {formData.subjects.length > 0 && (
                   <div className="mb-4">
                     <div className="flex flex-wrap gap-2">
-                      {formData.subjects?.map((subject) => (
+                      {formData.subjects.map((subject) => (
                         <span
                           key={subject}
                           className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors duration-200 ${
@@ -779,7 +752,7 @@ export default function AdmissionFormPage({
                     isDarkMode ? "bg-gray-700/50" : "bg-gray-50"
                   }`}
                 >
-                  {availableSubjects?.map((subject) => (
+                  {availableSubjects.map((subject) => (
                     <label
                       key={subject}
                       className={`flex items-center gap-2 cursor-pointer p-2 rounded transition-colors duration-200 ${

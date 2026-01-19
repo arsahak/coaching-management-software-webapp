@@ -1,4 +1,5 @@
 import AuthProvider from "@/component/providers/AuthProvider";
+import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "react-hot-toast";
 import "./globals.css";
@@ -13,8 +14,9 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata = {
-  metadataBase: new URL("https://gyne-clinics-website.vercel.app"),
+export const metadata: Metadata = {
+  title: "Coaching Center",
+  description: "Coaching Center Management System",
 };
 
 export default function RootLayout({

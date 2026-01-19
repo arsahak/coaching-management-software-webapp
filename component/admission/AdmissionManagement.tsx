@@ -17,6 +17,17 @@ import {
   FaUserPlus,
 } from "react-icons/fa";
 
+const PREDEFINED_CLASSES = [
+  "Class 5",
+  "Class 6",
+  "Class 7",
+  "Class 8",
+  "Class 9",
+  "Class 10",
+  "Class 11",
+  "Class 12",
+];
+
 interface Admission {
   _id: string;
   studentName: string;
@@ -256,9 +267,9 @@ export default function AdmissionManagement({
                 <option value="">
                   {getTranslation("allClasses", language) || "All Classes"}
                 </option>
-                {Array.from({ length: 10 }, (_, i) => (
-                  <option key={i + 1} value={`Class ${i + 1}`}>
-                    {getTranslation("class", language) || "Class"} {i + 1}
+                {PREDEFINED_CLASSES.map((cls) => (
+                  <option key={cls} value={cls}>
+                    {cls}
                   </option>
                 ))}
               </select>

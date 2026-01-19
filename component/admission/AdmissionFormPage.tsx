@@ -49,6 +49,17 @@ const DEFAULT_SUBJECTS = [
   "Higher Mathematics",
 ];
 
+const PREDEFINED_CLASSES = [
+  "Class 5",
+  "Class 6",
+  "Class 7",
+  "Class 8",
+  "Class 9",
+  "Class 10",
+  "Class 11",
+  "Class 12",
+];
+
 export default function AdmissionFormPage({
   admission,
 }: AdmissionFormPageProps) {
@@ -65,7 +76,7 @@ export default function AdmissionFormPage({
     fatherMobile: admission?.fatherMobile || "",
     motherMobile: admission?.motherMobile || "",
     studentMobile: admission?.studentMobile || "",
-    class: admission?.class || "", // Keep for backward compatibility
+    class: admission?.class || "", // Required field
     subjects: admission?.subjects || [],
     batchName: admission?.batchName || "",
     batchTime: admission?.batchTime || "",
@@ -129,6 +140,9 @@ export default function AdmissionFormPage({
     }
     if (formData.monthlyFee <= 0) {
       newErrors.monthlyFee = getTranslation("required", language) || "Required";
+    }
+    if (!formData.class.trim()) {
+      newErrors.class = getTranslation("required", language) || "Required";
     }
 
     setErrors(newErrors);
@@ -482,7 +496,7 @@ export default function AdmissionFormPage({
                       isDarkMode ? "text-gray-300" : "text-gray-700"
                     }`}
                   >
-                    {getTranslation("studentMobile", language) ||
+                    {getTranslation("Student Mobile", language) ||
                       "Student Mobile"}
                   </label>
                   <input
@@ -624,6 +638,68 @@ export default function AdmissionFormPage({
                 {getTranslation("academicInformation", language) ||
                   "Academic Information"}
               </h2>
+
+              {/* Class/Grade Section */}
+              <div className="mb-4">
+                <label
+                  className={`block text-sm font-medium mb-2 transition-colors duration-200 ${
+                    isDarkMode ? "text-gray-300" : "text-gray-700"
+                  }`}
+                >
+                  {getTranslation("class", language) || "Class/Grade"} *
+                </label>
+                <select
+                  value={formData.class}
+                  onChange={(e) =>
+                    setFormData({ ...formData, class: e.target.value })
+                  }
+                  className={`w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                    isDarkMode
+                      ? "border-gray-600 bg-gray-700 text-white"
+                      : "border-gray-300 bg-white text-gray-900"
+                  } ${errors.class ? "border-red-500" : ""}`}
+                >
+                  <option value="">
+                    {getTranslation("selectClass", language) ||
+                      "Select Class/Grade"}
+                  </option>
+                  {PREDEFINED_CLASSES.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls}
+                    </option>
+                  ))}
+                  <option value="custom">
+                    {getTranslation("other", language) || "Other (Custom)"}
+                  </option>
+                </select>
+                {formData.class === "custom" && (
+                  <input
+                    type="text"
+                    placeholder={
+                      getTranslation("enterCustomClass", language) ||
+                      "Enter custom class"
+                    }
+                    onChange={(e) =>
+                      setFormData({ ...formData, class: e.target.value })
+                    }
+                    className={`w-full mt-2 px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                      isDarkMode
+                        ? "border-gray-600 bg-gray-700 text-white"
+                        : "border-gray-300 bg-white text-gray-900"
+                    }`}
+                  />
+                )}
+                {errors.class && (
+                  <p
+                    className={`text-sm mt-1 transition-colors duration-200 ${
+                      isDarkMode ? "text-red-400" : "text-red-500"
+                    }`}
+                  >
+                    {errors.class}
+                  </p>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label

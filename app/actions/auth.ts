@@ -8,6 +8,8 @@ export async function credentialLogin(formData: FormData): Promise<{
   error?: string;
   ok: boolean;
   url?: string;
+  accessToken?: string;
+  user?: Record<string, unknown>;
 }> {
   const email = formData.get("email") as string | null;
   const password = formData.get("password") as string | null;
@@ -41,9 +43,16 @@ export async function credentialLogin(formData: FormData): Promise<{
       url: "/",
       accessToken: data.accessToken,
       user: data.user,
-    } as any;
+    } as {
+      ok: boolean;
+      url?: string;
+      accessToken?: string;
+      user?: Record<string, unknown>;
+    };
   } catch (err: any) {
-    console.error("Error during credential login:", err);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error during credential login:", err);
+    }
     return {
       error: "An unexpected error occurred. Please try again.",
       ok: false,
@@ -87,7 +96,9 @@ export async function userSignUp(
       url: response.url,
     };
   } catch (err) {
-    console.error("Error during user sign-up:", err);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error during user sign-up:", err);
+    }
     return {
       error: "A network error occurred. Please try again later.",
       ok: false,
@@ -128,7 +139,9 @@ export async function userForgetPasswordProcess(
       url: responseData?.url || response.url,
     };
   } catch (err) {
-    console.error("Error during forget password process:", err);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error during forget password process:", err);
+    }
     return {
       error: "An unexpected error occurred. Please try again later.",
       ok: false,
@@ -169,7 +182,9 @@ export async function userForgetPasswordProcessOtpCheck(
       url: responseData?.url || "",
     };
   } catch (err) {
-    console.error("Error during OTP verification:", err);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error during OTP verification:", err);
+    }
     return {
       error: "An unexpected error occurred during OTP verification.",
       ok: false,
@@ -211,7 +226,9 @@ export async function userForgetPasswordRecovery(
       url: responseData?.url || "",
     };
   } catch (err) {
-    console.error("Error during New Password verification:", err);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error during New Password verification:", err);
+    }
     return {
       error: "An unexpected error occurred during New Password verification.",
       ok: false,

@@ -5,13 +5,26 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "**",
+        hostname: "lh3.googleusercontent.com",
       },
       {
-        protocol: "http",
-        hostname: "**",
+        protocol: "https",
+        hostname: "avatars.githubusercontent.com",
       },
+      // Add your own domains here instead of allowing all
+      // Example:
+      // {
+      //   protocol: "https",
+      //   hostname: "your-cdn-domain.com",
+      // },
     ],
+  },
+  // Improve build performance
+  swcMinify: true,
+  // Enable experimental features if needed
+  experimental: {
+    // Uncomment if you need these features
+    // optimizePackageImports: ["recharts", "react-icons"],
   },
 };
 

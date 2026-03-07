@@ -1,11 +1,16 @@
 "use client";
 
-import { deleteAdmission, getAdmissions } from "@/app/actions/admission";
+import {
+  deleteAdmission,
+  getAdmissions,
+  getBatchList,
+} from "@/app/actions/admission";
 import { useLanguage } from "@/lib/LanguageContext";
 import { useSidebar } from "@/lib/SidebarContext";
 import { getTranslation } from "@/lib/translations";
+import { useDebounce } from "@/lib/hooks/useDebounce";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import toast from "react-hot-toast";
 import {
   FaEdit,
@@ -85,10 +90,30 @@ export default function AdmissionManagement({
   const [pagination, setPagination] = useState(initialPagination);
   const [search, setSearch] = useState(initialSearch);
   const [filters, setFilters] = useState(initialFilters);
+  const [batches, setBatches] = useState<string[]>([]);
+
+  // Fetch batch list on mount
+  useEffect(() => {
+    const fetchBatches = async () => {
+      const result = await getBatchList();
+      if (result.success && result.data) {
+        setBatches(result.data);
+      }
+    };
+    fetchBatches();
+  }, []);
+
+  // Debounced search handler
+  const { debouncedCallback: debouncedSearch } = useDebounce(
+    (value: string) => {
+      updateURL({ search: value, page: "1" });
+    },
+    500
+  );
 
   const handleSearch = (value: string) => {
     setSearch(value);
-    updateURL({ search: value, page: "1" });
+    debouncedSearch(value);
   };
 
   const handleFilterChange = (key: string, value: string) => {
@@ -109,22 +134,28 @@ export default function AdmissionManagement({
     router.push(`/admission?${current.toString()}`);
   };
 
-  const refreshData = async () => {
+  const refreshData = useCallback(async () => {
     startTransition(async () => {
-      const page = parseInt(searchParams.get("page") || "1");
-      const limit = parseInt(searchParams.get("limit") || "10");
-      const result = await getAdmissions(page, limit, search, {
-        class: filters.class || undefined,
-        batch: filters.batch || undefined,
-        status: filters.status || undefined,
-      });
+      try {
+        const page = parseInt(searchParams.get("page") || "1");
+        const limit = parseInt(searchParams.get("limit") || "10");
+        const result = await getAdmissions(page, limit, search, {
+          class: filters.class || undefined,
+          batch: filters.batch || undefined,
+          status: filters.status || undefined,
+        });
 
-      if (result.success && result.data) {
-        setAdmissions(result.data);
-        setPagination(result.pagination);
+        if (result.success && result.data) {
+          setAdmissions(result.data);
+          setPagination(result.pagination);
+        } else if (result.error) {
+          toast.error(result.error);
+        }
+      } catch (error) {
+        console.error("Error refreshing data:", error);
       }
     });
-  };
+  }, [searchParams, search, filters, startTransition]);
 
   const handleDelete = async (id: string) => {
     if (
@@ -287,6 +318,11 @@ export default function AdmissionManagement({
                 <option value="">
                   {getTranslation("allBatches", language) || "All Batches"}
                 </option>
+                {batches.map((batch) => (
+                  <option key={batch} value={batch}>
+                    {batch}
+                  </option>
+                ))}
               </select>
 
               {/* Status Filter */}

@@ -394,3 +394,40 @@ export async function getAdmissionStats(): Promise<AdmissionResponse> {
     };
   }
 }
+
+// Get unique batch list
+export async function getBatchList(): Promise<{
+  success: boolean;
+  data?: string[];
+  error?: string;
+}> {
+  try {
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${API_URL}/api/admission/batches`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.message || "Failed to fetch batch list",
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  } catch (error) {
+    console.error("Get batch list error:", error);
+    return {
+      success: false,
+      error: "An error occurred while fetching batch list",
+    };
+  }
+}

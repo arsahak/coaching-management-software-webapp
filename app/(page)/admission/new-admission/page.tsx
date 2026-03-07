@@ -1,4 +1,4 @@
-import AdmissionFormPage from "@/component/admission/AdmissionFormPage";
+import AdmissionFormPage from "@/component/admissionManagement/AdmissionFormPage";
 
 export const metadata = {
   title: "Add New Admission | Coaching Center",

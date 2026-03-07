@@ -1,5 +1,6 @@
 import { getAdmissions } from "@/app/actions/admission";
-import AdmissionManagement from "@/component/admission/AdmissionManagement";
+import AdmissionManagement from "@/component/admissionManagement/AdmissionManagement";
+
 
 export const metadata = {
   title: "Admission Management | Coaching Center",

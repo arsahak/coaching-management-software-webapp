@@ -1,5 +1,5 @@
 import { getAdmissionById } from "@/app/actions/admission";
-import AdmissionFormPage from "@/component/admission/AdmissionFormPage";
+import AdmissionFormPage from "@/component/admissionManagement/AdmissionFormPage";
 import { notFound } from "next/navigation";
 
 interface EditAdmissionPageProps {

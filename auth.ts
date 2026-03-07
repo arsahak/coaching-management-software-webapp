@@ -26,7 +26,9 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
 
         const apiUrl = process.env.NEXT_PUBLIC_API_URL;
         if (!apiUrl) {
-          console.error("API URL is not defined in environment variables.");
+          if (process.env.NODE_ENV === "development") {
+            console.error("API URL is not defined in environment variables.");
+          }
           throw new Error(
             "Server configuration error. Please try again later."
           );
@@ -45,9 +47,11 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
           // Check content type to ensure we got JSON
           const contentType = response.headers.get("content-type");
           if (!contentType || !contentType.includes("application/json")) {
-            console.error(
-              "Server returned non-JSON response. Backend may be down."
-            );
+            if (process.env.NODE_ENV === "development") {
+              console.error(
+                "Server returned non-JSON response. Backend may be down."
+              );
+            }
             throw new Error(
               "Unable to connect to server. Please check if backend is running."
             );
@@ -62,7 +66,9 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
 
           // Backend returns: { success, message, user, accessToken }
           if (!data.user || !data.accessToken) {
-            console.error("Incomplete user data received from server.");
+            if (process.env.NODE_ENV === "development") {
+              console.error("Incomplete user data received from server.");
+            }
             throw new Error("Server error. Please try again.");
           }
 
@@ -81,7 +87,9 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
             tokenIssuedAt: Date.now(), // Track when token was issued
           };
         } catch (error) {
-          console.error("Authorization error:", error);
+          if (process.env.NODE_ENV === "development") {
+            console.error("Authorization error:", error);
+          }
           // Re-throw with user-friendly message
           if (error instanceof Error) {
             throw error;
@@ -114,7 +122,9 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
 
         if (tokenAge > maxAge) {
           // Token has expired, return empty token to force re-login
-          console.log("Token expired, forcing re-login");
+          if (process.env.NODE_ENV === "development") {
+            console.log("Token expired, forcing re-login");
+          }
           return {
             ...token,
             accessToken: null,
@@ -138,19 +148,19 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
       }
 
       // Pass token data to session
-      if (token) {
+      if (token && token.id) {
         session.user = {
-          id: token.id,
-          _id: token._id,
-          name: token.name,
-          email: token.email,
-          role: token.role,
-          provider: token.provider,
-          avatar: token.avatar,
-          isEmailVerified: token.isEmailVerified,
-          image: token.avatar,
-        } as any; // Type assertion needed due to NextAuth complex type inference
-        session.accessToken = token.accessToken as string;
+          id: token.id as string,
+          _id: token._id as string,
+          name: token.name as string | null,
+          email: token.email as string | null,
+          role: token.role as string,
+          provider: token.provider as string,
+          avatar: token.avatar as string,
+          isEmailVerified: token.isEmailVerified as boolean,
+          image: token.avatar as string | null,
+        };
+        session.accessToken = token.accessToken as string | undefined;
       }
       return session;
     },

@@ -19,8 +19,6 @@ const nextConfig: NextConfig = {
       // },
     ],
   },
-  // Improve build performance
-  swcMinify: true,
   // Enable experimental features if needed
   experimental: {
     // Uncomment if you need these features

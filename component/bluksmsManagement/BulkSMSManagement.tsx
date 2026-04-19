@@ -72,14 +72,12 @@ export default function BulkSMSManagement() {
     mobileNumber: "",
     message: "",
     senderId: "Random",
-    apiKey: "",
   });
 
   const [bulkForm, setBulkForm] = useState({
     mobileNumbers: "",
     message: "",
     senderId: "Random",
-    apiKey: "",
   });
 
   const [customForm, setCustomForm] = useState<
@@ -94,7 +92,6 @@ export default function BulkSMSManagement() {
     class: "",
     batchName: "",
     senderId: "Random",
-    apiKey: "",
   });
 
   // History state
@@ -180,7 +177,6 @@ export default function BulkSMSManagement() {
         mobileNumber: singleForm.mobileNumber,
         message: singleForm.message,
         senderId: singleForm.senderId,
-        apiKey: singleForm.apiKey || undefined,
       });
 
       if (result.success) {
@@ -221,7 +217,6 @@ export default function BulkSMSManagement() {
         mobileNumbers: numbers,
         message: bulkForm.message,
         senderId: bulkForm.senderId,
-        apiKey: bulkForm.apiKey || undefined,
       });
 
       if (result.success) {
@@ -297,7 +292,6 @@ export default function BulkSMSManagement() {
           batchName: studentsForm.batchName || undefined,
         },
         senderId: studentsForm.senderId,
-        apiKey: studentsForm.apiKey || undefined,
       });
 
       if (result.success) {
@@ -783,6 +777,9 @@ export default function BulkSMSManagement() {
           </div>
         </div>
 
+        {/* ─── SEND VIEW CONTENT ──────────────────────────────────────── */}
+        {viewMode === "send" && <>
+
         {/* Send Mode Tabs */}
         <div
           className={`mb-6 rounded-xl shadow-md transition-colors duration-200 ${
@@ -945,30 +942,6 @@ export default function BulkSMSManagement() {
                     }`}
                   />
                 </div>
-                <div>
-                  <label
-                    className={`block text-sm font-medium mb-2 transition-colors duration-200 ${
-                      isDarkMode ? "text-gray-300" : "text-gray-700"
-                    }`}
-                  >
-                    {language === "bn"
-                      ? "API Key (ঐচ্ছিক)"
-                      : "API Key (Optional)"}
-                  </label>
-                  <input
-                    type="text"
-                    value={singleForm.apiKey}
-                    onChange={(e) =>
-                      setSingleForm({ ...singleForm, apiKey: e.target.value })
-                    }
-                    placeholder="Leave empty to use default"
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all ${
-                      isDarkMode
-                        ? "border-gray-600 bg-gray-700 text-white"
-                        : "border-gray-300 bg-white text-gray-900"
-                    }`}
-                  />
-                </div>
               </div>
               <button
                 type="submit"
@@ -1095,30 +1068,6 @@ export default function BulkSMSManagement() {
                       setBulkForm({ ...bulkForm, senderId: e.target.value })
                     }
                     placeholder="Random"
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all ${
-                      isDarkMode
-                        ? "border-gray-600 bg-gray-700 text-white"
-                        : "border-gray-300 bg-white text-gray-900"
-                    }`}
-                  />
-                </div>
-                <div>
-                  <label
-                    className={`block text-sm font-medium mb-2 transition-colors duration-200 ${
-                      isDarkMode ? "text-gray-300" : "text-gray-700"
-                    }`}
-                  >
-                    {language === "bn"
-                      ? "API Key (ঐচ্ছিক)"
-                      : "API Key (Optional)"}
-                  </label>
-                  <input
-                    type="text"
-                    value={bulkForm.apiKey}
-                    onChange={(e) =>
-                      setBulkForm({ ...bulkForm, apiKey: e.target.value })
-                    }
-                    placeholder="Leave empty to use default"
                     className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all ${
                       isDarkMode
                         ? "border-gray-600 bg-gray-700 text-white"
@@ -1434,33 +1383,6 @@ export default function BulkSMSManagement() {
                     }`}
                   />
                 </div>
-                <div>
-                  <label
-                    className={`block text-sm font-medium mb-2 transition-colors duration-200 ${
-                      isDarkMode ? "text-gray-300" : "text-gray-700"
-                    }`}
-                  >
-                    {language === "bn"
-                      ? "API Key (ঐচ্ছিক)"
-                      : "API Key (Optional)"}
-                  </label>
-                  <input
-                    type="text"
-                    value={studentsForm.apiKey}
-                    onChange={(e) =>
-                      setStudentsForm({
-                        ...studentsForm,
-                        apiKey: e.target.value,
-                      })
-                    }
-                    placeholder="Leave empty to use default"
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all ${
-                      isDarkMode
-                        ? "border-gray-600 bg-gray-700 text-white"
-                        : "border-gray-300 bg-white text-gray-900"
-                    }`}
-                  />
-                </div>
               </div>
               <button
                 type="submit"
@@ -1479,6 +1401,8 @@ export default function BulkSMSManagement() {
             </div>
           </form>
         )}
+
+        </> /* end viewMode === "send" */}
       </div>
     </div>
   );

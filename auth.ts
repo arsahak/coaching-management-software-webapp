@@ -149,17 +149,21 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
 
       // Pass token data to session
       if (token && token.id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         session.user = {
           id: token.id as string,
           _id: token._id as string,
-          name: token.name as string | null,
-          email: token.email as string | null,
+          name: (token.name as string) ?? "",
+          email: (token.email as string) ?? "",
           role: token.role as string,
           provider: token.provider as string,
           avatar: token.avatar as string,
           isEmailVerified: token.isEmailVerified as boolean,
           image: token.avatar as string | null,
-        };
+          emailVerified: null,
+          accessToken: token.accessToken as string,
+          tokenIssuedAt: token.tokenIssuedAt as number,
+        } as typeof session.user;
         session.accessToken = token.accessToken as string | undefined;
       }
       return session;

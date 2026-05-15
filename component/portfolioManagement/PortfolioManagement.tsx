@@ -1,8 +1,9 @@
 "use client";
 import { getPortfolio, updatePortfolio } from "@/app/actions/portflio";
+import GlobalLoading from "@/component/ui/GlobalLoading";
 import { useSidebar } from "@/lib/SidebarContext";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import toast from "react-hot-toast";
 import {
   FaFacebook,
@@ -25,7 +26,7 @@ import {
 const PortfolioManagement = () => {
   const { isDarkMode } = useSidebar();
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  const [isDataPending, startDataTransition] = useTransition();
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [formData, setFormData] = useState({
@@ -56,16 +57,15 @@ const PortfolioManagement = () => {
     fetchPortfolio();
   }, []);
 
-  const fetchPortfolio = async () => {
-    setLoading(true);
-    try {
-      const result = await getPortfolio();
+  const fetchPortfolio = () => {
+    startDataTransition(async () => {
+      try {
+        const result = await getPortfolio();
 
-      if (result.success && result.data) {
-        const portfolio = result.data;
-        console.log("Portfolio fetched successfully:", portfolio);
+        if (result.success && result.data) {
+          const portfolio = result.data;
 
-        setFormData({
+          setFormData({
           appTitle: portfolio.appTitle || "",
           appLogo: portfolio.appLogo || "",
           appDescription: portfolio.appDescription || "",
@@ -106,9 +106,8 @@ const PortfolioManagement = () => {
           ? error.message
           : "Failed to fetch portfolio settings";
       toast.error(errorMessage);
-    } finally {
-      setLoading(false);
     }
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -237,10 +236,14 @@ const PortfolioManagement = () => {
     }
   };
 
-  if (loading) {
+  if (isDataPending) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      <div
+        className={`min-h-screen transition-colors duration-200 ${
+          isDarkMode ? "bg-gray-900" : "bg-gray-50"
+        }`}
+      >
+        <GlobalLoading variant="content" titleKey="loadingPortfolio" />
       </div>
     );
   }

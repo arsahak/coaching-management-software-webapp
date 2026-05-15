@@ -67,7 +67,7 @@ const getMenuItems = (language: string): MenuItem[] => [
   },
   {
     icon: <FaSms className="w-5 h-5" />,
-    label: getTranslation("Bulk SMS", language),
+    label: getTranslation("bulkSms", language),
     path: "/bluk-sms",
   },
   {

@@ -8,6 +8,7 @@ import {
   markBatchAttendance,
   sendAttendanceReportSMS,
 } from "@/app/actions/attendance";
+import GlobalLoading from "@/component/ui/GlobalLoading";
 import { useLanguage } from "@/lib/LanguageContext";
 import { useSidebar } from "@/lib/SidebarContext";
 import { getTranslation } from "@/lib/translations";
@@ -75,6 +76,7 @@ export default function StudentAttendanceManagement() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
+  const [isDataPending, startDataTransition] = useTransition();
 
   // View state: 'dashboard' (overall view) or 'mark' (daily attendance check)
   const [activeTab, setActiveTab] = useState<"dashboard" | "mark">("dashboard");
@@ -118,12 +120,10 @@ export default function StudentAttendanceManagement() {
   });
   const [batchDetailStudents, setBatchDetailStudents] = useState<Admission[]>([]);
   const [batchDetailAttendances, setBatchDetailAttendances] = useState<Attendance[]>([]);
-  const [batchDetailLoading, setBatchDetailLoading] = useState(false);
-
   // Load all unique classes from all admissions
   useEffect(() => {
     const loadAllClasses = async () => {
-      startTransition(async () => {
+      startDataTransition(async () => {
         // Fetch all admissions without filters to get all classes
         const result = await getAdmissions(1, 5000, "", { status: "active" });
         
@@ -177,7 +177,7 @@ export default function StudentAttendanceManagement() {
   }, [activeTab, admissions, attendanceMap, filters]);
 
   const loadAdmissions = async () => {
-    startTransition(async () => {
+    startDataTransition(async () => {
       // Fetch all active students matching filters
       const result = await getAdmissions(1, 1000, search, {
         class: filters.class,
@@ -194,7 +194,7 @@ export default function StudentAttendanceManagement() {
   };
 
   const loadAttendance = async () => {
-    startTransition(async () => {
+    startDataTransition(async () => {
       const result = await getAttendances(1, 1000, {
         startDate: selectedDate,
         endDate: selectedDate,
@@ -221,7 +221,7 @@ export default function StudentAttendanceManagement() {
   };
 
   const loadStats = async () => {
-    startTransition(async () => {
+    startDataTransition(async () => {
       const result = await getAttendanceStats({
         startDate: selectedDate,
         endDate: selectedDate,
@@ -311,8 +311,7 @@ export default function StudentAttendanceManagement() {
     className: string,
     range = batchDetailRange,
   ) => {
-    setBatchDetailLoading(true);
-    try {
+    startDataTransition(async () => {
       const [admResult, attResult] = await Promise.all([
         getAdmissions(1, 500, "", {
           class: className,
@@ -337,9 +336,7 @@ export default function StudentAttendanceManagement() {
           (Array.isArray(attResult.data) ? attResult.data : []) as Attendance[],
         );
       }
-    } finally {
-      setBatchDetailLoading(false);
-    }
+    });
   };
 
   const handleOpenBatchDetail = (batch: BatchStats) => {
@@ -478,9 +475,26 @@ export default function StudentAttendanceManagement() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBatch, batchDetailRange]);
 
+  if (
+    isDataPending &&
+    admissions.length === 0 &&
+    availableClasses.length === 0 &&
+    !selectedBatch
+  ) {
+    return (
+      <div
+        className={`min-h-screen transition-colors duration-200 ${
+          isDarkMode ? "bg-gray-900" : "bg-gray-50"
+        }`}
+      >
+        <GlobalLoading variant="content" titleKey="loadingAttendance" />
+      </div>
+    );
+  }
+
   return (
     <div
-      className={`min-h-screen transition-colors duration-200 ${isDarkMode ? "bg-gray-900" : "bg-gray-50 bg-gray-50"}`}
+      className={`min-h-screen transition-colors duration-200 ${isDarkMode ? "bg-gray-900" : "bg-gray-50"}`}
     >
       <div className="p-4 md:p-6 w-full mx-auto">
         {/* Header & Global Date Filter */}
@@ -711,7 +725,10 @@ export default function StudentAttendanceManagement() {
               </h3>
 
               {/* ── Batch List Table ─────────────────────────────────────────── */}
-              {!selectedBatch && (batchStats.length > 0 ? (
+              {!selectedBatch &&
+                (isDataPending && batchStats.length === 0 ? (
+                  <GlobalLoading embedded titleKey="loadingAttendance" />
+                ) : batchStats.length > 0 ? (
                 <div className={`rounded-lg border overflow-hidden ${
                   isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"
                 }`}>
@@ -983,14 +1000,8 @@ export default function StudentAttendanceManagement() {
                       </div>
                     </div>
 
-                    {/* Loading skeleton */}
-                    {batchDetailLoading ? (
-                      <div className={`p-8 text-center rounded-xl border animate-pulse ${
-                        isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"
-                      }`}>
-                        <div className={`h-4 rounded w-48 mx-auto mb-3 ${isDarkMode ? "bg-gray-700" : "bg-gray-200"}`} />
-                        <div className={`h-3 rounded w-32 mx-auto ${isDarkMode ? "bg-gray-700" : "bg-gray-200"}`} />
-                      </div>
+                    {isDataPending ? (
+                      <GlobalLoading embedded titleKey="loadingAttendance" />
                     ) : batchDetailStudents.length === 0 ? (
                       <div className={`p-10 text-center rounded-xl border ${
                         isDarkMode ? "bg-gray-800 border-gray-700" : "bg-gray-50 border-gray-200"
@@ -1314,6 +1325,8 @@ export default function StudentAttendanceManagement() {
                     : "Please select a class or batch from the filters above to check attendance"}
                 </p>
               </div>
+            ) : isDataPending ? (
+              <GlobalLoading embedded titleKey="loadingAttendance" />
             ) : filteredAdmissions.length === 0 ? (
               <div
                 className={`p-16 text-center rounded-2xl border-2 border-dashed ${

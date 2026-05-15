@@ -8,6 +8,7 @@ import {
 } from "@/app/actions/admission";
 import { useLanguage } from "@/lib/LanguageContext";
 import { useSidebar } from "@/lib/SidebarContext";
+import GlobalLoading from "@/component/ui/GlobalLoading";
 import { getTranslation } from "@/lib/translations";
 import { useDebounce } from "@/lib/hooks/useDebounce";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -111,15 +112,17 @@ export default function AdmissionManagement({
   }, []);
 
   const updateURL = (params: Record<string, string>) => {
-    const current = new URLSearchParams(searchParams.toString());
-    Object.entries(params).forEach(([key, value]) => {
-      if (value) {
-        current.set(key, value);
-      } else {
-        current.delete(key);
-      }
+    startTransition(() => {
+      const current = new URLSearchParams(searchParams.toString());
+      Object.entries(params).forEach(([key, value]) => {
+        if (value) {
+          current.set(key, value);
+        } else {
+          current.delete(key);
+        }
+      });
+      router.push(`/admission?${current.toString()}`);
     });
-    router.push(`/admission?${current.toString()}`);
   };
 
   // Debounced search handler
@@ -205,6 +208,10 @@ export default function AdmissionManagement({
   const handlePrint = (admission: Admission) => {
     router.push(`/admission/${admission._id}`);
   };
+
+  if (isPending) {
+    return <GlobalLoading variant="content" titleKey="loadingAdmission" />;
+  }
 
   return (
     <>

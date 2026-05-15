@@ -11,6 +11,7 @@ import {
   updateFee,
 } from "@/app/actions/fee";
 import { getAdmissions } from "@/app/actions/admission";
+import GlobalLoading from "@/component/ui/GlobalLoading";
 import { useLanguage } from "@/lib/LanguageContext";
 import { useSidebar } from "@/lib/SidebarContext";
 import { useEffect, useState, useTransition } from "react";
@@ -93,6 +94,7 @@ export default function TuitionFeeManagement() {
   const { isDarkMode } = useSidebar();
   const { language } = useLanguage();
   const [isPending, startTransition] = useTransition();
+  const [isDataPending, startDataTransition] = useTransition();
 
   const curMonth = new Date().getMonth() + 1;
   const curYear  = new Date().getFullYear();
@@ -115,7 +117,7 @@ export default function TuitionFeeManagement() {
   const [availableClasses, setAvailableClasses] = useState<string[]>([]);
 
   useEffect(() => {
-    startTransition(async () => {
+    startDataTransition(async () => {
       const result = await getAdmissions(1, 5000, "", { status: "active" });
       if (result.success && result.data) {
         const all = (Array.isArray(result.data) ? result.data : []) as AdmissionRecord[];
@@ -149,7 +151,7 @@ export default function TuitionFeeManagement() {
   useEffect(() => { loadData(); }, [filterMonth, filterYear, filterClass]);
 
   const loadData = () => {
-    startTransition(async () => {
+    startDataTransition(async () => {
       const [admRes, feeRes, statsRes] = await Promise.all([
         getAdmissions(1, 1000, "", { status: "active", class: filterClass || undefined }),
         getFees(1, 2000, { month: filterMonth, year: filterYear, class: filterClass || undefined }),
@@ -394,6 +396,21 @@ export default function TuitionFeeManagement() {
       else toast.error(r.error || t("Failed to send SMS", "SMS পাঠাতে ব্যর্থ"));
     });
   };
+
+  if (
+    isDataPending &&
+    viewMode === "list" &&
+    admissions.length === 0 &&
+    availableClasses.length === 0
+  ) {
+    return (
+      <div
+        className={`min-h-screen transition-colors duration-200 ${isDarkMode ? "bg-gray-900" : "bg-gray-50"}`}
+      >
+        <GlobalLoading variant="content" titleKey="loadingFee" />
+      </div>
+    );
+  }
 
   // ─────────────────────────────────────────────────────────────────────────────
   return (
@@ -667,12 +684,15 @@ export default function TuitionFeeManagement() {
 
               <p className={`text-xs mt-3 ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
                 {rows.length} {t("students", "জন")}
-                {isPending && <span className="ml-2 animate-pulse">{t("Loading...", "লোড হচ্ছে...")}</span>}
               </p>
             </div>
 
             {/* ── Table ──────────────────────────────────────────── */}
             <div className={`rounded-xl shadow-md overflow-hidden ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+              {isDataPending && admissions.length === 0 ? (
+                <GlobalLoading embedded titleKey="loadingFee" />
+              ) : (
+              <>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className={`${isDarkMode ? "bg-gradient-to-r from-gray-700 to-gray-800" : "bg-gradient-to-r from-gray-50 to-gray-100"}`}>
@@ -698,7 +718,7 @@ export default function TuitionFeeManagement() {
                     </tr>
                   </thead>
                   <tbody className={`divide-y ${isDarkMode ? "bg-gray-800 divide-gray-700" : "bg-white divide-gray-100"}`}>
-                    {rows.length === 0 ? (
+                    {rows.length === 0 && !isDataPending ? (
                       <tr>
                         <td colSpan={10} className="px-6 py-14 text-center">
                           <div className="flex flex-col items-center gap-3">
@@ -884,6 +904,8 @@ export default function TuitionFeeManagement() {
                     </span>
                   </div>
                 </div>
+              )}
+              </>
               )}
             </div>
 

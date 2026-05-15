@@ -2,15 +2,14 @@
 import { DashboardData, getDashboardOverview } from "@/app/actions/dashboard";
 import { useLanguage } from "@/lib/LanguageContext";
 import { useSidebar } from "@/lib/SidebarContext";
+import GlobalLoading from "@/component/ui/GlobalLoading";
 import { getTranslation } from "@/lib/translations";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
   IoMdAnalytics,
-  IoMdCalendar,
   IoMdDocument,
   IoMdPeople,
-  IoMdSettings,
   IoMdTrendingDown,
   IoMdTrendingUp,
 } from "react-icons/io";
@@ -30,9 +29,19 @@ import {
   YAxis,
 } from "recharts";
 
+const MONTH_NAMES_EN = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+const MONTH_NAMES_BN = [
+  "জানু", "ফেব", "মার্চ", "এপ্রিল", "মে", "জুন",
+  "জুলাই", "আগস্ট", "সেপ্টে", "অক্টো", "নভে", "ডিসে",
+];
+
 const Dashboard = ({ session }: { session?: string }) => {
   const { isDarkMode } = useSidebar();
   const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(
     null
   );
@@ -49,22 +58,31 @@ const Dashboard = ({ session }: { session?: string }) => {
       if (result.success && result.data) {
         setDashboardData(result.data);
       } else {
-        toast.error(result.error || "Failed to load dashboard data");
+        toast.error(result.error || t("failedLoadDashboard"));
       }
     } catch (error) {
       console.error("Error fetching dashboard:", error);
-      toast.error("Failed to load dashboard data");
+      toast.error(t("failedLoadDashboard"));
     } finally {
       setLoading(false);
     }
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat(language === "bn" ? "bn-BD" : "en-US", {
       style: "currency",
-      currency: "USD",
+      currency: language === "bn" ? "BDT" : "USD",
       minimumFractionDigits: 0,
     }).format(amount);
+  };
+
+  const getStatusLabel = (status: string) => {
+    const key = status.toLowerCase();
+    if (key === "active") return t("active");
+    if (key === "pending") return t("pending");
+    if (key === "inactive") return t("inactive");
+    if (key === "completed") return t("completed");
+    return status;
   };
 
   const formatPercentage = (value: number) => {
@@ -76,8 +94,8 @@ const Dashboard = ({ session }: { session?: string }) => {
   const getChartData = () => {
     if (!dashboardData?.monthlyTrends) return [];
     
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    
+    const monthNames = language === "bn" ? MONTH_NAMES_BN : MONTH_NAMES_EN;
+
     return dashboardData.monthlyTrends.map((trend) => ({
       month: `${monthNames[trend._id.month - 1]} ${trend._id.year}`,
       admissions: trend.count,
@@ -112,7 +130,7 @@ const Dashboard = ({ session }: { session?: string }) => {
               style={{ color: entry.color }}
             >
               {entry.name}:{" "}
-              {entry.name === "Revenue"
+              {entry.dataKey === "revenue"
                 ? formatCurrency(entry.value)
                 : entry.value}
             </p>
@@ -125,18 +143,7 @@ const Dashboard = ({ session }: { session?: string }) => {
 
   if (loading) {
     return (
-      <div
-        className={`min-h-screen flex items-center justify-center ${
-          isDarkMode ? "bg-gray-900" : "bg-gray-50"
-        }`}
-      >
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
-            Loading dashboard...
-          </p>
-        </div>
-      </div>
+      <GlobalLoading variant="content" titleKey="loadingDashboard" />
     );
   }
 
@@ -156,38 +163,15 @@ const Dashboard = ({ session }: { session?: string }) => {
                   isDarkMode ? "text-gray-100" : "text-gray-900"
                 }`}
               >
-                {getTranslation("welcomeAdmin", language)}
+                {t("welcomeAdmin")}
               </h1>
               <p
                 className={`text-sm mt-1 transition-colors duration-200 ${
                   isDarkMode ? "text-gray-400" : "text-gray-600"
                 }`}
               >
-                {getTranslation("ordersToday", language)}
+                {t("dashboardSubtitle")}
               </p>
-            </div>
-            <div className="flex items-center gap-4 mt-4 lg:mt-0">
-              <div
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors duration-200 ${
-                  isDarkMode
-                    ? "bg-gray-800 text-gray-300 border border-gray-700"
-                    : "bg-white text-gray-700 border border-gray-200"
-                }`}
-              >
-                <IoMdCalendar className="w-4 h-4" />
-                <span className="text-sm font-medium">
-                  10/20/2025 - 10/26/2025
-                </span>
-              </div>
-              <button
-                className={`p-2 rounded-lg transition-colors duration-200 ${
-                  isDarkMode
-                    ? "bg-gray-800 text-gray-300 hover:bg-gray-700"
-                    : "bg-white text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                <IoMdSettings className="w-5 h-5" />
-              </button>
             </div>
           </div>
 
@@ -205,7 +189,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-orange-100 text-sm font-medium">
-                      Total Students
+                      {t("totalStudents")}
                     </p>
                     <p className="text-white text-2xl font-bold mt-1">
                       {dashboardData?.overview.totalStudents || 0}
@@ -246,7 +230,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-blue-100 text-sm font-medium">
-                      New Admissions
+                      {t("newAdmissionsThisMonth")}
                     </p>
                     <p className="text-white text-2xl font-bold mt-1">
                       {dashboardData?.overview.newAdmissionsThisMonth || 0}
@@ -296,7 +280,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                     </p>
                     <div className="flex items-center mt-2">
                       <span className="text-green-300 text-sm font-medium">
-                        Avg:{" "}
+                        {t("avgLabel")}:{" "}
                         {formatCurrency(
                           dashboardData?.overview.avgMonthlyFee || 0
                         )}
@@ -320,7 +304,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-cyan-100 text-sm font-medium">
-                      Total Teachers
+                      {t("totalTeachers")}
                     </p>
                     <p className="text-white text-2xl font-bold mt-1">
                       {dashboardData?.overview.totalTeachers || 0}
@@ -353,7 +337,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                         isDarkMode ? "text-gray-400" : "text-gray-600"
                       }`}
                     >
-                      Pending Admissions
+                      {t("pendingAdmissions")}
                     </p>
                     <p
                       className={`text-2xl font-bold mt-1 transition-colors duration-200 ${
@@ -364,7 +348,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                     </p>
                     <div className="flex items-center mt-2">
                       <span className="text-yellow-500 text-sm font-medium">
-                        Needs Review
+                        {t("needsReview")}
                       </span>
                     </div>
                   </div>
@@ -410,7 +394,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                           isDarkMode ? "text-gray-400" : "text-gray-500"
                         }`}
                       >
-                        Active Classes
+                        {t("activeClasses")}
                       </span>
                     </div>
                   </div>
@@ -441,7 +425,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                         isDarkMode ? "text-gray-400" : "text-gray-600"
                       }`}
                     >
-                      Total Batches
+                      {t("totalBatches")}
                     </p>
                     <p
                       className={`text-2xl font-bold mt-1 transition-colors duration-200 ${
@@ -456,7 +440,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                           isDarkMode ? "text-gray-400" : "text-gray-500"
                         }`}
                       >
-                        Running Batches
+                        {t("runningBatches")}
                       </span>
                     </div>
                   </div>
@@ -495,7 +479,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                         isDarkMode ? "text-gray-100" : "text-gray-900"
                       }`}
                     >
-                      Admission Trends (Last 6 Months)
+                      {t("admissionTrendsLast6Months")}
                     </h3>
                   </div>
                 </div>
@@ -510,7 +494,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                           isDarkMode ? "text-gray-400" : "text-gray-600"
                         }`}
                       >
-                        Monthly Admissions
+                        {t("monthlyAdmissions")}
                       </p>
                       <ResponsiveContainer width="100%" height={200}>
                         <AreaChart data={getChartData()}>
@@ -554,7 +538,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                             stroke="#3b82f6"
                             fillOpacity={1}
                             fill="url(#colorAdmissions)"
-                            name="Admissions"
+                            name={t("chartAdmissions")}
                           />
                         </AreaChart>
                       </ResponsiveContainer>
@@ -567,7 +551,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                           isDarkMode ? "text-gray-400" : "text-gray-600"
                         }`}
                       >
-                        Monthly Revenue
+                        {t("monthlyRevenue")}
                       </p>
                       <ResponsiveContainer width="100%" height={200}>
                         <BarChart data={getChartData()}>
@@ -612,7 +596,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                           isDarkMode ? "text-gray-400" : "text-gray-500"
                         }`}
                       >
-                        No trend data available
+                        {t("noTrendData")}
                       </p>
                     </div>
                   </div>
@@ -632,7 +616,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                       isDarkMode ? "text-gray-100" : "text-gray-900"
                     }`}
                   >
-                    Students by Class
+                    {t("studentsByClass")}
                   </h3>
                   <div className="space-y-3">
                     {dashboardData?.distribution.byClass.map((item) => (
@@ -657,7 +641,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                               isDarkMode ? "text-gray-300" : "text-gray-700"
                             }`}
                           >
-                            Class {item._id}
+                            {t("class")} {item._id}
                           </span>
                         </div>
                         <span
@@ -676,7 +660,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                           isDarkMode ? "text-gray-400" : "text-gray-500"
                         }`}
                       >
-                        No class data available
+                        {t("noClassData")}
                       </p>
                     )}
                   </div>
@@ -720,7 +704,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                                 isDarkMode ? "text-gray-300" : "text-gray-700"
                               }`}
                             >
-                              Batch {item._id}
+                              {t("batch")} {item._id}
                             </span>
                           </div>
                           <span
@@ -739,7 +723,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                           isDarkMode ? "text-gray-400" : "text-gray-500"
                         }`}
                       >
-                        No batch data available
+                        {t("noBatchData")}
                       </p>
                     )}
                   </div>
@@ -765,7 +749,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                       isDarkMode ? "text-gray-100" : "text-gray-900"
                     }`}
                   >
-                    Recent Admissions
+                    {t("recentAdmissions")}
                   </h3>
                 </div>
               </div>
@@ -786,35 +770,35 @@ const Dashboard = ({ session }: { session?: string }) => {
                             isDarkMode ? "text-gray-400" : "text-gray-600"
                           }`}
                         >
-                          Student Name
+                          {t("studentName")}
                         </th>
                         <th
                           className={`text-left py-3 px-4 text-sm font-medium ${
                             isDarkMode ? "text-gray-400" : "text-gray-600"
                           }`}
                         >
-                          Class
+                          {t("class")}
                         </th>
                         <th
                           className={`text-left py-3 px-4 text-sm font-medium ${
                             isDarkMode ? "text-gray-400" : "text-gray-600"
                           }`}
                         >
-                          Batch
+                          {t("batch")}
                         </th>
                         <th
                           className={`text-left py-3 px-4 text-sm font-medium ${
                             isDarkMode ? "text-gray-400" : "text-gray-600"
                           }`}
                         >
-                          Status
+                          {t("status")}
                         </th>
                         <th
                           className={`text-left py-3 px-4 text-sm font-medium ${
                             isDarkMode ? "text-gray-400" : "text-gray-600"
                           }`}
                         >
-                          Date
+                          {t("date")}
                         </th>
                       </tr>
                     </thead>
@@ -859,7 +843,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                                   : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
                               }`}
                             >
-                              {admission.status}
+                              {getStatusLabel(admission.status)}
                             </span>
                           </td>
                           <td
@@ -869,11 +853,14 @@ const Dashboard = ({ session }: { session?: string }) => {
                           >
                             {new Date(
                               admission.admissionDate
-                            ).toLocaleDateString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            })}
+                            ).toLocaleDateString(
+                              language === "bn" ? "bn-BD" : "en-US",
+                              {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              }
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -895,7 +882,7 @@ const Dashboard = ({ session }: { session?: string }) => {
                         isDarkMode ? "text-gray-400" : "text-gray-500"
                       }`}
                     >
-                      No recent admissions
+                      {t("noRecentAdmissions")}
                     </p>
                   </div>
                 )}

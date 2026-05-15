@@ -7,6 +7,7 @@ import {
   QRCodeData,
   updateQRCode,
 } from "@/app/actions/qrCode";
+import GlobalLoading from "@/component/ui/GlobalLoading";
 import { useLanguage } from "@/lib/LanguageContext";
 import { useSidebar } from "@/lib/SidebarContext";
 import { useRouter } from "next/navigation";
@@ -51,6 +52,7 @@ export default function QRCodeManagement() {
   const { language } = useLanguage();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [isDataPending, startDataTransition] = useTransition();
 
   // State
   const [qrCodes, setQRCodes] = useState<QRCode[]>([]);
@@ -82,7 +84,7 @@ export default function QRCodeManagement() {
   }, [filters, search]);
 
   const loadQRCodes = async () => {
-    startTransition(async () => {
+    startDataTransition(async () => {
       try {
         setLoadError(null);
         const result = await getQRCodes(1, 100, {
@@ -719,6 +721,23 @@ export default function QRCodeManagement() {
     );
   }
 
+  if (
+    isDataPending &&
+    viewMode === "list" &&
+    qrCodes.length === 0 &&
+    !loadError
+  ) {
+    return (
+      <div
+        className={`min-h-screen transition-colors duration-200 ${
+          isDarkMode ? "bg-gray-900" : "bg-gray-50"
+        }`}
+      >
+        <GlobalLoading variant="content" titleKey="loadingQrCode" />
+      </div>
+    );
+  }
+
   // List View
   return (
     <div
@@ -861,16 +880,8 @@ export default function QRCodeManagement() {
         </div>
 
         {/* QR Codes Grid */}
-        {isPending ? (
-          <div className="text-center py-12">
-            <p
-              className={`transition-colors duration-200 ${
-                isDarkMode ? "text-gray-400" : "text-gray-600"
-              }`}
-            >
-              {language === "bn" ? "লোড হচ্ছে..." : "Loading..."}
-            </p>
-          </div>
+        {isDataPending && qrCodes.length === 0 ? (
+          <GlobalLoading embedded titleKey="loadingQrCode" />
         ) : loadError ? (
           <div
             className={`text-center py-12 rounded-xl transition-colors duration-200 ${

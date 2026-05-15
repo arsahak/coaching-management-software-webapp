@@ -1,8 +1,11 @@
 "use client";
 import { createSubUser } from "@/app/actions/userManagement";
+import { useLanguage } from "@/lib/LanguageContext";
 import { useSidebar } from "@/lib/SidebarContext";
+import { getTranslation } from "@/lib/translations";
+import { getAvailableRoutes } from "@/lib/userRoutePermissions";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   MdAdd,
@@ -16,72 +19,12 @@ import {
   MdPerson,
 } from "react-icons/md";
 
-const AVAILABLE_ROUTES = [
-  {
-    id: "admission",
-    name: "Get Admission",
-    description: "Access to admission management and student enrollment",
-    route: "/admission",
-  },
-  {
-    id: "student",
-    name: "Student Management",
-    description: "View and manage student information",
-    route: "/student",
-  },
-  {
-    id: "exam",
-    name: "Student Exam",
-    description: "Access to exam management and results",
-    route: "/exam",
-  },
-  {
-    id: "fee",
-    name: "Fee Management",
-    description: "Manage fee collection and payment records",
-    route: "/fee",
-  },
-  {
-    id: "attendance",
-    name: "Attendance",
-    description: "Mark and view student attendance",
-    route: "/attendance",
-  },
-  {
-    id: "course",
-    name: "Course Management",
-    description: "Create and manage courses",
-    route: "/course",
-  },
-  {
-    id: "teacher",
-    name: "Teacher Management",
-    description: "Manage teacher information and assignments",
-    route: "/teacher",
-  },
-  {
-    id: "report",
-    name: "Reports",
-    description: "View and generate various reports",
-    route: "/report",
-  },
-  {
-    id: "settings",
-    name: "Settings",
-    description: "Access to system settings",
-    route: "/settings",
-  },
-  {
-    id: "add-user",
-    name: "Add User",
-    description: "Access to add new users and manage user creation",
-    route: "/settings/add-user",
-  },
-];
-
 const AddNewUserForm = () => {
   const { isDarkMode } = useSidebar();
+  const { language } = useLanguage();
   const router = useRouter();
+  const t = (key: string) => getTranslation(key, language);
+  const availableRoutes = useMemo(() => getAvailableRoutes(language), [language]);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [formData, setFormData] = useState({
@@ -122,14 +65,14 @@ const AddNewUserForm = () => {
     // Validate file type
     const validTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
     if (!validTypes.includes(file.type)) {
-      toast.error("Please upload a PNG, JPG, or WEBP image");
+      toast.error(t("invalidImageType"));
       return;
     }
 
     // Validate file size (5MB = 5 * 1024 * 1024 bytes)
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
-      toast.error("Image size must be less than 5MB");
+      toast.error(t("imageTooLarge"));
       return;
     }
 
@@ -159,10 +102,10 @@ const AddNewUserForm = () => {
           ...formData,
           avatar: data.data.url,
         });
-        toast.success("Avatar uploaded successfully!");
+        toast.success(t("avatarUploaded"));
       } else {
         const errorMsg =
-          data.error?.message || data.status_txt || "Failed to upload avatar";
+          data.error?.message || data.status_txt || t("failedUploadAvatar");
         toast.error(errorMsg);
       }
     } catch (error) {
@@ -170,7 +113,7 @@ const AddNewUserForm = () => {
       const errorMessage =
         error instanceof Error
           ? error.message
-          : "Failed to upload avatar. Please try again.";
+          : t("failedUploadAvatarRetry");
       toast.error(errorMessage);
     } finally {
       setUploadingAvatar(false);
@@ -196,15 +139,15 @@ const AddNewUserForm = () => {
       };
       const result = await createSubUser(userData);
       if (result.success) {
-        toast.success("User created successfully!");
+        toast.success(t("userCreatedSuccess"));
         router.push("/settings");
       } else {
-        toast.error(result.error || "Failed to create user");
+        toast.error(result.error || t("failedCreateUser"));
       }
     } catch (error) {
       console.error("Error creating user:", error);
       const errorMessage =
-        error instanceof Error ? error.message : "Failed to create user";
+        error instanceof Error ? error.message : t("failedCreateUser");
       toast.error(errorMessage);
     } finally {
       setSaving(false);
@@ -225,7 +168,7 @@ const AddNewUserForm = () => {
             }`}
           >
             <MdArrowBack className="text-xl" />
-            Back
+            {t("back")}
           </button>
 
           <div className="flex items-center gap-4 mb-2">
@@ -246,11 +189,10 @@ const AddNewUserForm = () => {
                   isDarkMode ? "text-gray-100" : "text-gray-900"
                 }`}
               >
-                Add New User
+                {t("addNewUser")}
               </h1>
               <p className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
-                Create a new user account with role, permissions, and profile
-                information
+                {t("addNewUserDesc")}
               </p>
             </div>
           </div>
@@ -275,7 +217,7 @@ const AddNewUserForm = () => {
                       isDarkMode ? "text-gray-100" : "text-gray-900"
                     }`}
                   >
-                    User Information
+                    {t("userInformation")}
                   </h2>
                 </div>
 
@@ -287,7 +229,7 @@ const AddNewUserForm = () => {
                         isDarkMode ? "text-gray-300" : "text-gray-700"
                       }`}
                     >
-                      User Type *
+                      {t("userType")} *
                     </label>
                     <div className="grid grid-cols-2 gap-4">
                       <button
@@ -321,14 +263,14 @@ const AddNewUserForm = () => {
                                 isDarkMode ? "text-gray-100" : "text-gray-900"
                               }`}
                             >
-                              Main User
+                              {t("mainUser")}
                             </p>
                             <p
                               className={`text-xs ${
                                 isDarkMode ? "text-gray-400" : "text-gray-600"
                               }`}
                             >
-                              Full system access
+                              {t("fullSystemAccess")}
                             </p>
                           </div>
                         </div>
@@ -364,14 +306,14 @@ const AddNewUserForm = () => {
                                 isDarkMode ? "text-gray-100" : "text-gray-900"
                               }`}
                             >
-                              Sub User
+                              {t("subUser")}
                             </p>
                             <p
                               className={`text-xs ${
                                 isDarkMode ? "text-gray-400" : "text-gray-600"
                               }`}
                             >
-                              Limited access
+                              {t("limitedAccess")}
                             </p>
                           </div>
                         </div>
@@ -386,7 +328,7 @@ const AddNewUserForm = () => {
                         isDarkMode ? "text-gray-300" : "text-gray-700"
                       }`}
                     >
-                      Profile Picture
+                      {t("profilePicture")}
                     </label>
                     <div className="flex items-center gap-4">
                       {formData.avatar && (
@@ -415,10 +357,10 @@ const AddNewUserForm = () => {
                           <MdImage className="text-xl" />
                           <span>
                             {uploadingAvatar
-                              ? "Uploading..."
+                              ? t("uploading")
                               : formData.avatar
-                              ? "Change Picture"
-                              : "Upload Picture (PNG, JPG, WEBP - Max 5MB)"}
+                              ? t("changePicture")
+                              : t("uploadPicture")}
                           </span>
                         </div>
                         <input
@@ -445,7 +387,7 @@ const AddNewUserForm = () => {
                         isDarkMode ? "text-gray-300" : "text-gray-700"
                       }`}
                     >
-                      Full Name *
+                      {t("fullName")} *
                     </label>
                     <input
                       type="text"
@@ -453,7 +395,7 @@ const AddNewUserForm = () => {
                       value={formData.name}
                       onChange={handleChange}
                       required
-                      placeholder="Enter user's full name"
+                      placeholder={t("namePlaceholder")}
                       className={`w-full px-4 py-3 rounded-lg border-2 ${
                         isDarkMode
                           ? "bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-500"
@@ -469,7 +411,7 @@ const AddNewUserForm = () => {
                         isDarkMode ? "text-gray-300" : "text-gray-700"
                       }`}
                     >
-                      Email Address *
+                      {t("emailAddress")} *
                     </label>
                     <input
                       type="email"
@@ -493,7 +435,7 @@ const AddNewUserForm = () => {
                         isDarkMode ? "text-gray-300" : "text-gray-700"
                       }`}
                     >
-                      Password *
+                      {t("password")} *
                     </label>
                     <input
                       type="password"
@@ -502,7 +444,7 @@ const AddNewUserForm = () => {
                       onChange={handleChange}
                       required
                       minLength={6}
-                      placeholder="Minimum 6 characters"
+                      placeholder={t("minimumPassword")}
                       className={`w-full px-4 py-3 rounded-lg border-2 ${
                         isDarkMode
                           ? "bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-500"
@@ -525,7 +467,7 @@ const AddNewUserForm = () => {
                         isDarkMode ? "text-gray-300" : "text-gray-700"
                       }`}
                     >
-                      Role *
+                      {t("role")} *
                     </label>
                     <select
                       name="role"
@@ -537,10 +479,10 @@ const AddNewUserForm = () => {
                           : "bg-gray-50 border-gray-300 text-gray-900"
                       } focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                     >
-                      <option value="teacher">Teacher</option>
-                      <option value="student">Student</option>
+                      <option value="teacher">{t("teacherRole")}</option>
+                      <option value="student">{t("studentRole")}</option>
                       {formData.userType === "main-user" && (
-                        <option value="admin">Admin</option>
+                        <option value="admin">{t("adminRole")}</option>
                       )}
                     </select>
                     <p
@@ -571,7 +513,7 @@ const AddNewUserForm = () => {
                         isDarkMode ? "text-gray-100" : "text-gray-900"
                       }`}
                     >
-                      Route Permissions
+                      {t("routePermissions")}
                     </h2>
                   </div>
 
@@ -580,11 +522,11 @@ const AddNewUserForm = () => {
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}
                   >
-                    Select which routes this user can access:
+                    {t("selectRoutesPrompt")}
                   </p>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {AVAILABLE_ROUTES.map((route) => {
+                    {availableRoutes.map((route) => {
                       const hasPermission = selectedPermissions.includes(
                         route.id
                       );
@@ -663,7 +605,7 @@ const AddNewUserForm = () => {
                       : "border-gray-300 text-gray-700 hover:bg-gray-50"
                   }`}
                 >
-                  Cancel
+                  {t("cancel")}
                 </button>
                 <button
                   type="submit"
@@ -678,7 +620,7 @@ const AddNewUserForm = () => {
                   ) : (
                     <>
                       <MdAdd className="text-xl" />
-                      Create User
+                      {t("createUser")}
                     </>
                   )}
                 </button>
@@ -815,7 +757,7 @@ const AddNewUserForm = () => {
                       {selectedPermissions.length > 0 && (
                         <div className="mt-2 space-y-1">
                           {selectedPermissions.slice(0, 3).map((permId) => {
-                            const route = AVAILABLE_ROUTES.find(
+                            const route = availableRoutes.find(
                               (r) => r.id === permId
                             );
                             return route ? (

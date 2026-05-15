@@ -1,9 +1,10 @@
 "use client";
 
 import { getSMSSettings, saveSMSSettings } from "@/app/actions/smsSettings";
+import GlobalLoading from "@/component/ui/GlobalLoading";
 import { useLanguage } from "@/lib/LanguageContext";
 import { useSidebar } from "@/lib/SidebarContext";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import toast from "react-hot-toast";
 import {
   FaBell,
@@ -283,13 +284,14 @@ export default function SettingsDetilas() {
 
   const [activeTab, setActiveTab] = useState<Tab>("admission");
   const [settings, setSettings]   = useState<Settings>(DEFAULTS);
-  const [saved,    setSaved]       = useState(false);
-  const [loading,  setLoading]     = useState(true);
-  const [saving,   setSaving]      = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [isDataPending, startDataTransition] = useTransition();
+  const [saving, setSaving] = useState(false);
 
   // Load from backend on mount
   useEffect(() => {
-    getSMSSettings().then((res) => {
+    startDataTransition(async () => {
+      const res = await getSMSSettings();
       if (res.success && res.data) {
         setSettings((prev) => {
           const next = { ...prev };
@@ -301,7 +303,7 @@ export default function SettingsDetilas() {
           return next;
         });
       }
-    }).finally(() => setLoading(false));
+    });
   }, []);
 
   const update = <K extends keyof Settings>(key: K, val: Settings[K]) =>
@@ -485,6 +487,16 @@ export default function SettingsDetilas() {
     ),
   };
 
+  if (isDataPending) {
+    return (
+      <div
+        className={`min-h-screen transition-colors duration-200 ${isDarkMode ? "bg-gray-900" : "bg-gray-50"}`}
+      >
+        <GlobalLoading variant="content" titleKey="loadingSettings" />
+      </div>
+    );
+  }
+
   return (
     <div className={`min-h-screen transition-colors duration-200 ${isDarkMode ? "bg-gray-900" : "bg-gray-50"}`}>
       <div className="p-6">
@@ -512,7 +524,7 @@ export default function SettingsDetilas() {
 
           <button
             onClick={handleSave}
-            disabled={saving || loading}
+            disabled={saving || isDataPending}
             className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm shadow-sm transition-all duration-150 shrink-0 disabled:opacity-60 ${
               saved
                 ? isDarkMode ? "bg-green-700 text-white" : "bg-green-600 text-white"
@@ -565,13 +577,7 @@ export default function SettingsDetilas() {
         </div>
 
         {/* ── Tab content ── */}
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <FaSpinner className={`animate-spin text-3xl ${isDarkMode ? "text-blue-400" : "text-blue-500"}`} />
-          </div>
-        ) : (
-          <div>{tabContent[activeTab]}</div>
-        )}
+        <div>{tabContent[activeTab]}</div>
 
 
       </div>

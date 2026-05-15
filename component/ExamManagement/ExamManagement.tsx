@@ -12,8 +12,10 @@ import {
   sendExamScheduleSMS,
   updateExam,
 } from "@/app/actions/exam";
+import GlobalLoading from "@/component/ui/GlobalLoading";
 import { useLanguage } from "@/lib/LanguageContext";
 import { useSidebar } from "@/lib/SidebarContext";
+import { getTranslation } from "@/lib/translations";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import toast from "react-hot-toast";
@@ -83,6 +85,7 @@ export default function ExamManagement() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
+  const [isDataPending, startDataTransition] = useTransition();
 
   const [exams, setExams] = useState<Exam[]>([]);
   const [selectedExam, setSelectedExam] = useState<Exam | null>(null);
@@ -139,7 +142,7 @@ export default function ExamManagement() {
 
   // Load active admissions once — classes & batches come from this list
   useEffect(() => {
-    startTransition(async () => {
+    startDataTransition(async () => {
       const result = await getAdmissions(1, 5000, "", { status: "active" });
       if (result.success && result.data) {
         const allAdmissions = (Array.isArray(result.data) ? result.data : []) as Admission[];
@@ -184,7 +187,7 @@ export default function ExamManagement() {
   }, [selectedExam, viewMode]);
 
   const loadExams = async () => {
-    startTransition(async () => {
+    startDataTransition(async () => {
       const result = await getExams(1, 100, filters);
       if (result.success && result.data) {
         setExams((Array.isArray(result.data) ? result.data : []) as Exam[]);
@@ -194,7 +197,7 @@ export default function ExamManagement() {
 
   const loadResults = async () => {
     if (!selectedExam) return;
-    startTransition(async () => {
+    startDataTransition(async () => {
       const result = await getExamResults(selectedExam._id);
       if (result.success && result.data) {
         const data = (Array.isArray(result.data) ? result.data : []) as ExamResult[];
@@ -218,7 +221,7 @@ export default function ExamManagement() {
 
   const loadAdmissions = async () => {
     if (!selectedExam) return;
-    startTransition(async () => {
+    startDataTransition(async () => {
       const result = await getAdmissions(1, 1000, "", { class: selectedExam.class, batch: selectedExam.batchName, status: "active" });
       if (result.success && result.data) {
         const data = (Array.isArray(result.data) ? result.data : []) as Admission[];
@@ -236,7 +239,7 @@ export default function ExamManagement() {
 
   const loadStats = async () => {
     if (!selectedExam) return;
-    startTransition(async () => {
+    startDataTransition(async () => {
       const result = await getExamStats(selectedExam._id);
       if (result.success && result.data) setStats(result.data);
     });
@@ -440,6 +443,21 @@ export default function ExamManagement() {
     return map[type];
   };
 
+  if (
+    isDataPending &&
+    viewMode === "list" &&
+    exams.length === 0 &&
+    !admissionsReady
+  ) {
+    return (
+      <div
+        className={`min-h-screen transition-colors duration-200 ${isDarkMode ? "bg-gray-900" : "bg-gray-50"}`}
+      >
+        <GlobalLoading variant="content" titleKey="loadingExam" />
+      </div>
+    );
+  }
+
   return (
     <div className={`min-h-screen transition-colors duration-200 ${isDarkMode ? "bg-gray-900" : "bg-gray-50"}`}>
       <div className="p-6">
@@ -531,6 +549,9 @@ export default function ExamManagement() {
 
             {/* Exams Table */}
             <div className={`rounded-xl shadow-md overflow-hidden transition-colors duration-200 ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+              {isDataPending && exams.length === 0 ? (
+                <GlobalLoading embedded titleKey="loadingExam" />
+              ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className={`transition-colors duration-200 ${isDarkMode ? "bg-gradient-to-r from-gray-700 to-gray-800" : "bg-gradient-to-r from-gray-50 to-gray-100"}`}>
@@ -659,6 +680,7 @@ export default function ExamManagement() {
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
           </>
         )}
@@ -753,9 +775,7 @@ export default function ExamManagement() {
                             ? "প্রথমে ক্লাস নির্বাচন করুন"
                             : "Select class first"
                           : !admissionsReady
-                          ? language === "bn"
-                            ? "লোড হচ্ছে..."
-                            : "Loading..."
+                          ? getTranslation("loading", language)
                           : language === "bn"
                           ? "ব্যাচ নির্বাচন করুন"
                           : "Select Batch"}
@@ -921,6 +941,10 @@ export default function ExamManagement() {
                   </p>
                 </div>
               </div>
+              {isDataPending && admissions.length === 0 ? (
+                <GlobalLoading embedded titleKey="loadingExam" />
+              ) : (
+              <>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className={`transition-colors duration-200 ${isDarkMode ? "bg-gradient-to-r from-gray-700 to-gray-800" : "bg-gradient-to-r from-gray-50 to-gray-100"}`}>
@@ -1025,10 +1049,12 @@ export default function ExamManagement() {
                   </tbody>
                 </table>
               </div>
-              {admissions.length === 0 && (
+              {admissions.length === 0 && !isDataPending && (
                 <div className={`px-6 py-12 text-center ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
                   {language === "bn" ? "এই ব্যাচে কোনো সক্রিয় ছাত্র নেই" : "No active students in this batch"}
                 </div>
+              )}
+              </>
               )}
             </div>
 

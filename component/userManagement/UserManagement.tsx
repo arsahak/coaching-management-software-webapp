@@ -5,9 +5,13 @@ import {
   SubUser,
   updateUserPermissions,
 } from "@/app/actions/userManagement";
+import GlobalLoading from "@/component/ui/GlobalLoading";
+import { useLanguage } from "@/lib/LanguageContext";
 import { useSidebar } from "@/lib/SidebarContext";
+import { getTranslation } from "@/lib/translations";
+import { getAvailableRoutes } from "@/lib/userRoutePermissions";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import toast from "react-hot-toast";
 import {
   MdAdd,
@@ -21,80 +25,13 @@ import {
   MdSave,
 } from "react-icons/md";
 
-interface RoutePermission {
-  id: string;
-  name: string;
-  description: string;
-  route: string;
-}
-
-const AVAILABLE_ROUTES: RoutePermission[] = [
-  {
-    id: "admission",
-    name: "Get Admission",
-    description: "Access to admission management and student enrollment",
-    route: "/admission",
-  },
-  {
-    id: "student",
-    name: "Student Management",
-    description: "View and manage student information",
-    route: "/student",
-  },
-  {
-    id: "exam",
-    name: "Student Exam",
-    description: "Access to exam management and results",
-    route: "/exam",
-  },
-  {
-    id: "fee",
-    name: "Fee Management",
-    description: "Manage fee collection and payment records",
-    route: "/fee",
-  },
-  {
-    id: "attendance",
-    name: "Attendance",
-    description: "Mark and view student attendance",
-    route: "/attendance",
-  },
-  {
-    id: "course",
-    name: "Course Management",
-    description: "Create and manage courses",
-    route: "/course",
-  },
-  {
-    id: "teacher",
-    name: "Teacher Management",
-    description: "Manage teacher information and assignments",
-    route: "/teacher",
-  },
-  {
-    id: "report",
-    name: "Reports",
-    description: "View and generate various reports",
-    route: "/report",
-  },
-  {
-    id: "settings",
-    name: "Settings",
-    description: "Access to system settings",
-    route: "/settings",
-  },
-  {
-    id: "add-user",
-    name: "Add User",
-    description: "Access to add new users and manage user creation",
-    route: "/settings/add-user",
-  },
-];
-
 const UserManagement = () => {
   const { isDarkMode } = useSidebar();
+  const { language } = useLanguage();
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  const t = (key: string) => getTranslation(key, language);
+  const availableRoutes = useMemo(() => getAvailableRoutes(language), [language]);
+  const [isDataPending, startDataTransition] = useTransition();
   const [saving, setSaving] = useState(false);
   const [users, setUsers] = useState<SubUser[]>([]);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
@@ -105,35 +42,33 @@ const UserManagement = () => {
     fetchUsers();
   }, []);
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      const result = await getSubUsers();
-      if (result.success && result.data) {
-        // Ensure data is an array
-        const usersData = Array.isArray(result.data)
-          ? result.data
-          : [result.data];
-        setUsers(usersData);
-      } else {
-        toast.error(result.error || "Failed to fetch users");
+  const fetchUsers = () => {
+    startDataTransition(async () => {
+      try {
+        const result = await getSubUsers();
+        if (result.success && result.data) {
+          const usersData = Array.isArray(result.data)
+            ? result.data
+            : [result.data];
+          setUsers(usersData);
+        } else {
+          toast.error(result.error || t("failedFetchUsers"));
+        }
+      } catch (error) {
+        console.error("Error fetching users:", error);
+        const errorMessage =
+          error instanceof Error ? error.message : t("failedFetchUsers");
+        toast.error(errorMessage);
       }
-    } catch (error) {
-      console.error("Error fetching users:", error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to fetch users";
-      toast.error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
   const handleAddUser = () => {
-    router.push("/settings/add-user");
+    router.push("/users/add-user");
   };
 
   const handleEditUser = (user: SubUser) => {
-    router.push(`/settings/edit?id=${user._id}`);
+    router.push(`/users/edit?id=${user._id}`);
   };
 
   const handleManagePermissions = (user: SubUser) => {
@@ -143,21 +78,21 @@ const UserManagement = () => {
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!confirm("Are you sure you want to delete this user?")) return;
+    if (!confirm(t("confirmDeleteUser"))) return;
 
     setSaving(true);
     try {
       const result = await deleteSubUser(userId);
       if (result.success) {
-        toast.success("User deleted successfully!");
+        toast.success(t("userDeletedSuccess"));
         fetchUsers();
       } else {
-        toast.error(result.error || "Failed to delete user");
+        toast.error(result.error || t("failedDeleteUser"));
       }
     } catch (error) {
       console.error("Error deleting user:", error);
       const errorMessage =
-        error instanceof Error ? error.message : "Failed to delete user";
+        error instanceof Error ? error.message : t("failedDeleteUser");
       toast.error(errorMessage);
     } finally {
       setSaving(false);
@@ -174,17 +109,17 @@ const UserManagement = () => {
         userPermissions
       );
       if (result.success) {
-        toast.success("Permissions updated successfully!");
+        toast.success(t("permissionsUpdatedSuccess"));
         setShowPermissionsModal(false);
         setSelectedUser(null);
         fetchUsers();
       } else {
-        toast.error(result.error || "Failed to update permissions");
+        toast.error(result.error || t("failedUpdatePermissions"));
       }
     } catch (error) {
       console.error("Error updating permissions:", error);
       const errorMessage =
-        error instanceof Error ? error.message : "Failed to update permissions";
+        error instanceof Error ? error.message : t("failedUpdatePermissions");
       toast.error(errorMessage);
     } finally {
       setSaving(false);
@@ -199,10 +134,14 @@ const UserManagement = () => {
     );
   };
 
-  if (loading) {
+  if (isDataPending && users.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      <div
+        className={`min-h-screen transition-colors duration-200 ${
+          isDarkMode ? "bg-gray-900" : "bg-gray-50"
+        }`}
+      >
+        <GlobalLoading variant="content" titleKey="loadingUsers" />
       </div>
     );
   }
@@ -218,7 +157,7 @@ const UserManagement = () => {
         }`}
       >
         <MdArrowBack className="text-xl" />
-        Back to Settings
+        {t("backToSettings")}
       </button>
 
       <div className="flex items-center justify-between mb-6">
@@ -228,10 +167,10 @@ const UserManagement = () => {
               isDarkMode ? "text-gray-100" : "text-gray-900"
             }`}
           >
-            User Management
+            {t("userManagement")}
           </h1>
           <p className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
-            Manage sub-users and their route access permissions
+            {t("manageSubUsersDesc")}
           </p>
         </div>
         <button
@@ -239,7 +178,7 @@ const UserManagement = () => {
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
         >
           <MdAdd className="text-xl" />
-          Add User
+          {t("addUser")}
         </button>
       </div>
 
@@ -258,11 +197,13 @@ const UserManagement = () => {
               isDarkMode ? "text-gray-100" : "text-gray-900"
             }`}
           >
-            Sub-Users ({users.length})
+            {t("subUsers")} ({users.length})
           </h2>
         </div>
 
-        {users.length === 0 ? (
+        {isDataPending && users.length === 0 ? (
+          <GlobalLoading embedded titleKey="loadingUsers" />
+        ) : users.length === 0 ? (
           <div className="text-center py-12">
             <MdPeople
               className={`text-6xl mx-auto mb-4 ${
@@ -270,7 +211,7 @@ const UserManagement = () => {
               }`}
             />
             <p className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
-              No sub-users found. Click "Add User" to create one.
+              {t("noSubUsersFound")}
             </p>
           </div>
         ) : (
@@ -287,35 +228,35 @@ const UserManagement = () => {
                       isDarkMode ? "text-gray-300" : "text-gray-700"
                     }`}
                   >
-                    Name
+                    {t("name")}
                   </th>
                   <th
                     className={`text-left py-3 px-4 font-semibold ${
                       isDarkMode ? "text-gray-300" : "text-gray-700"
                     }`}
                   >
-                    Email
+                    {t("email")}
                   </th>
                   <th
                     className={`text-left py-3 px-4 font-semibold ${
                       isDarkMode ? "text-gray-300" : "text-gray-700"
                     }`}
                   >
-                    Role
+                    {t("role")}
                   </th>
                   <th
                     className={`text-left py-3 px-4 font-semibold ${
                       isDarkMode ? "text-gray-300" : "text-gray-700"
                     }`}
                   >
-                    Permissions
+                    {t("permissions")}
                   </th>
                   <th
                     className={`text-left py-3 px-4 font-semibold ${
                       isDarkMode ? "text-gray-300" : "text-gray-700"
                     }`}
                   >
-                    Actions
+                    {t("actions")}
                   </th>
                 </tr>
               </thead>
@@ -364,7 +305,7 @@ const UserManagement = () => {
                           isDarkMode ? "text-gray-300" : "text-gray-700"
                         }`}
                       >
-                        {user.permissions?.length || 0} routes
+                        {user.permissions?.length || 0} {t("routesCount")}
                       </span>
                     </td>
                     <td className="py-3 px-4">
@@ -376,7 +317,7 @@ const UserManagement = () => {
                               ? "text-blue-400 hover:bg-gray-700"
                               : "text-blue-600 hover:bg-blue-50"
                           }`}
-                          title="Manage Permissions"
+                          title={t("managePermissions")}
                         >
                           <MdLock className="text-xl" />
                         </button>
@@ -387,7 +328,7 @@ const UserManagement = () => {
                               ? "text-yellow-400 hover:bg-gray-700"
                               : "text-yellow-600 hover:bg-yellow-50"
                           }`}
-                          title="Edit User"
+                          title={t("editUserAction")}
                         >
                           <MdEdit className="text-xl" />
                         </button>
@@ -398,7 +339,7 @@ const UserManagement = () => {
                               ? "text-red-400 hover:bg-gray-700"
                               : "text-red-600 hover:bg-red-50"
                           }`}
-                          title="Delete User"
+                          title={t("deleteUserAction")}
                         >
                           <MdDelete className="text-xl" />
                         </button>
@@ -428,7 +369,7 @@ const UserManagement = () => {
                   isDarkMode ? "text-gray-100" : "text-gray-900"
                 }`}
               >
-                Manage Permissions - {selectedUser.name}
+                {t("managePermissionsTitle")} - {selectedUser.name}
               </h3>
               <button
                 onClick={() => {
@@ -450,11 +391,11 @@ const UserManagement = () => {
                 isDarkMode ? "text-gray-400" : "text-gray-600"
               }`}
             >
-              Select which routes this user can access:
+              {t("selectRoutesPrompt")}
             </p>
 
             <div className="space-y-3 max-h-96 overflow-y-auto mb-6">
-              {AVAILABLE_ROUTES.map((route) => {
+              {availableRoutes.map((route) => {
                 const hasPermission = userPermissions.includes(route.id);
                 return (
                   <div
@@ -498,7 +439,7 @@ const UserManagement = () => {
                             isDarkMode ? "text-gray-500" : "text-gray-500"
                           }`}
                         >
-                          Route: {route.route}
+                          {t("routeLabel")}: {route.route}
                         </p>
                       </div>
                     </div>
@@ -520,7 +461,7 @@ const UserManagement = () => {
                     : "border-gray-300 text-gray-700 hover:bg-gray-50"
                 }`}
               >
-                Cancel
+                {t("cancel")}
               </button>
               <button
                 onClick={handleSavePermissions}
@@ -530,12 +471,12 @@ const UserManagement = () => {
                 {saving ? (
                   <>
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    Saving...
+                    {t("saving")}
                   </>
                 ) : (
                   <>
                     <MdSave />
-                    Save Permissions
+                    {t("savePermissions")}
                   </>
                 )}
               </button>

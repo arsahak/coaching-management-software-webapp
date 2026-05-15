@@ -9,9 +9,17 @@ import {
   sendSingleSMS,
   sendSMSToStudents,
 } from "@/app/actions/sms";
+import GlobalLoading from "@/component/ui/GlobalLoading";
 import { useLanguage } from "@/lib/LanguageContext";
 import { useSidebar } from "@/lib/SidebarContext";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type FormEvent,
+} from "react";
 import toast from "react-hot-toast";
 import {
   FaChartBar,
@@ -72,6 +80,7 @@ export default function BulkSMSManagement() {
   const { isDarkMode } = useSidebar();
   const { language } = useLanguage();
   const [isPending, startTransition] = useTransition();
+  const [isDataPending, startDataTransition] = useTransition();
 
   const [viewMode, setViewMode] = useState<ViewMode>("send");
   const [sendMode, setSendMode] = useState<SendMode>("single");
@@ -136,7 +145,7 @@ export default function BulkSMSManagement() {
     page: number,
     filters: { type?: string; status?: string; search?: string },
   ) => {
-    startTransition(async () => {
+    startDataTransition(async () => {
       const result = await getSMSHistory(page, HISTORY_PAGE_SIZE, filters);
       if (result.success && result.data) {
         setSmsHistory(
@@ -148,7 +157,7 @@ export default function BulkSMSManagement() {
   };
 
   const loadStats = async () => {
-    startTransition(async () => {
+    startDataTransition(async () => {
       const result = await getSMSStats();
       if (result.success && result.data) {
         setStats(result.data as typeof stats);
@@ -157,7 +166,7 @@ export default function BulkSMSManagement() {
   };
 
   const loadAdmissions = async () => {
-    startTransition(async () => {
+    startDataTransition(async () => {
       const result = await getAdmissions(1, 2000, "", { status: "active" });
       if (result.success && result.data) {
         setAllAdmissions(
@@ -224,14 +233,18 @@ export default function BulkSMSManagement() {
 
   useEffect(() => {
     if (viewMode === "history") loadSMSHistory(historyPage, historyFilters);
-  }, [viewMode, historyFilters, historyPage]); // eslint-disable-line react-hooks/exhaustive-deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, historyFilters, historyPage]);
+
   useEffect(() => {
     if (viewMode === "stats") loadStats();
   }, [viewMode]);
   useEffect(() => {
     if (sendMode === "students") loadAdmissions();
-  }, [sendMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sendMode]);
+
+  useEffect(() => {
+    loadAdmissions();
+  }, []);
 
   // Close batch dropdown on outside click
   useEffect(() => {
@@ -247,7 +260,7 @@ export default function BulkSMSManagement() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const handleSendSingle = async (e: React.FormEvent) => {
+  const handleSendSingle = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     startTransition(async () => {
       const result = await sendSingleSMS({
@@ -272,7 +285,7 @@ export default function BulkSMSManagement() {
     });
   };
 
-  const handleSendBulk = async (e: React.FormEvent) => {
+  const handleSendBulk = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const numbers = bulkForm.mobileNumbers
       .split(/[,\n]/)
@@ -303,7 +316,7 @@ export default function BulkSMSManagement() {
     });
   };
 
-  const handleSendCustom = async (e: React.FormEvent) => {
+  const handleSendCustom = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const validMessages = customForm.filter(
       (m) => m.number.trim() && m.message.trim(),
@@ -327,7 +340,7 @@ export default function BulkSMSManagement() {
     });
   };
 
-  const handleSendToStudents = async (e: React.FormEvent) => {
+  const handleSendToStudents = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     startTransition(async () => {
       const result = await sendSMSToStudents({
@@ -574,6 +587,23 @@ export default function BulkSMSManagement() {
       icon: FaChartBar,
     },
   ];
+
+  if (
+    isDataPending &&
+    allAdmissions.length === 0 &&
+    smsHistory.length === 0 &&
+    stats === null
+  ) {
+    return (
+      <div
+        className={`min-h-screen transition-colors duration-200 ${
+          isDarkMode ? "bg-gray-900" : "bg-slate-50"
+        }`}
+      >
+        <GlobalLoading variant="content" titleKey="loadingBulkSms" />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -989,15 +1019,8 @@ export default function BulkSMSManagement() {
                 </div>
 
                 {/* Loading skeleton while admissions are fetching */}
-                {isPending && allAdmissions.length === 0 ? (
-                  <div className="flex items-center justify-center py-10 gap-3">
-                    <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
-                    <span className={`text-sm ${mutedCls}`}>
-                      {language === "bn"
-                        ? "ছাত্রদের তথ্য লোড হচ্ছে..."
-                        : "Loading student data..."}
-                    </span>
-                  </div>
+                {isDataPending && allAdmissions.length === 0 ? (
+                  <GlobalLoading embedded titleKey="loadingStudentData" />
                 ) : (
                   <div className="space-y-5">
                     <div className="grid md:grid-cols-3 gap-5">
@@ -1036,7 +1059,7 @@ export default function BulkSMSManagement() {
                             </option>
                           ))}
                         </select>
-                        {uniqueClasses.length === 0 && !isPending && (
+                        {uniqueClasses.length === 0 && !isDataPending && (
                           <p className={`text-xs mt-1 ${mutedCls}`}>
                             {language === "bn"
                               ? "কোনো শ্রেণি পাওয়া যায়নি"
@@ -1326,12 +1349,9 @@ export default function BulkSMSManagement() {
               </div>
             </div>
 
-            {isPending ? (
-              <div className={`${cardCls} py-16 text-center`}>
-                <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                <p className={mutedCls}>
-                  {language === "bn" ? "লোড হচ্ছে..." : "Loading..."}
-                </p>
+            {isDataPending ? (
+              <div className={cardCls}>
+                <GlobalLoading embedded titleKey="loadingBulkSms" />
               </div>
             ) : smsHistory.length === 0 ? (
               <div className={`${cardCls} py-20 text-center`}>
@@ -1466,7 +1486,7 @@ export default function BulkSMSManagement() {
                         {/* Prev */}
                         <button
                           type="button"
-                          disabled={!historyPagination.hasPrev || isPending}
+                          disabled={!historyPagination.hasPrev || isDataPending}
                           onClick={() => setHistoryPage((p) => p - 1)}
                           className={`flex items-center justify-center w-8 h-8 rounded-lg border text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                             isDarkMode
@@ -1511,7 +1531,7 @@ export default function BulkSMSManagement() {
                               <button
                                 key={p}
                                 type="button"
-                                disabled={isPending}
+                                disabled={isDataPending}
                                 onClick={() => setHistoryPage(p as number)}
                                 className={`flex items-center justify-center w-8 h-8 rounded-lg border text-sm font-medium transition-colors disabled:cursor-not-allowed ${
                                   historyPagination.page === p
@@ -1529,7 +1549,7 @@ export default function BulkSMSManagement() {
                         {/* Next */}
                         <button
                           type="button"
-                          disabled={!historyPagination.hasNext || isPending}
+                          disabled={!historyPagination.hasNext || isDataPending}
                           onClick={() => setHistoryPage((p) => p + 1)}
                           className={`flex items-center justify-center w-8 h-8 rounded-lg border text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                             isDarkMode
@@ -1551,12 +1571,9 @@ export default function BulkSMSManagement() {
         {/* ══ STATS VIEW ═══════════════════════════════════════════════════ */}
         {viewMode === "stats" && (
           <div className="space-y-5">
-            {isPending && !stats ? (
-              <div className={`${cardCls} py-16 text-center`}>
-                <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                <p className={mutedCls}>
-                  {language === "bn" ? "লোড হচ্ছে..." : "Loading..."}
-                </p>
+            {isDataPending && !stats ? (
+              <div className={cardCls}>
+                <GlobalLoading embedded titleKey="loadingBulkSms" />
               </div>
             ) : stats ? (
               <>

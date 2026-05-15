@@ -1,8 +1,12 @@
 "use client";
 import { getSubUsers, updateSubUser, updateUserPermissions } from "@/app/actions/userManagement";
+import GlobalLoading from "@/component/ui/GlobalLoading";
+import { useLanguage } from "@/lib/LanguageContext";
 import { useSidebar } from "@/lib/SidebarContext";
+import { getTranslation } from "@/lib/translations";
+import { getAvailableRoutes } from "@/lib/userRoutePermissions";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   MdArrowBack,
@@ -13,69 +17,6 @@ import {
   MdPerson,
   MdSave,
 } from "react-icons/md";
-
-const AVAILABLE_ROUTES = [
-  {
-    id: "admission",
-    name: "Get Admission",
-    description: "Access to admission management and student enrollment",
-    route: "/admission",
-  },
-  {
-    id: "student",
-    name: "Student Management",
-    description: "View and manage student information",
-    route: "/student",
-  },
-  {
-    id: "exam",
-    name: "Student Exam",
-    description: "Access to exam management and results",
-    route: "/exam",
-  },
-  {
-    id: "fee",
-    name: "Fee Management",
-    description: "Manage fee collection and payment records",
-    route: "/fee",
-  },
-  {
-    id: "attendance",
-    name: "Attendance",
-    description: "Mark and view student attendance",
-    route: "/attendance",
-  },
-  {
-    id: "course",
-    name: "Course Management",
-    description: "Create and manage courses",
-    route: "/course",
-  },
-  {
-    id: "teacher",
-    name: "Teacher Management",
-    description: "Manage teacher information and assignments",
-    route: "/teacher",
-  },
-  {
-    id: "report",
-    name: "Reports",
-    description: "View and generate various reports",
-    route: "/report",
-  },
-  {
-    id: "settings",
-    name: "Settings",
-    description: "Access to system settings",
-    route: "/settings",
-  },
-  {
-    id: "add-user",
-    name: "Add User",
-    description: "Access to add new users and manage user creation",
-    route: "/settings/add-user",
-  },
-];
 
 interface User {
   _id: string;
@@ -89,9 +30,12 @@ interface User {
 
 const EditUserForm = () => {
   const { isDarkMode } = useSidebar();
+  const { language } = useLanguage();
   const router = useRouter();
   const searchParams = useSearchParams();
   const userId = searchParams.get("id");
+  const t = (key: string) => getTranslation(key, language);
+  const availableRoutes = useMemo(() => getAvailableRoutes(language), [language]);
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -129,16 +73,16 @@ const EditUserForm = () => {
           });
           setSelectedPermissions(foundUser.permissions || []);
         } else {
-          toast.error("User not found");
+          toast.error(t("userNotFound"));
           router.push("/settings");
         }
       } else {
-        toast.error("Failed to load user data");
+        toast.error(t("failedLoadUser"));
         router.push("/settings");
       }
     } catch (error) {
       console.error("Error fetching user:", error);
-      toast.error("Failed to load user data");
+      toast.error(t("failedLoadUser"));
       router.push("/settings");
     } finally {
       setLoading(false);
@@ -172,13 +116,13 @@ const EditUserForm = () => {
 
     const validTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
     if (!validTypes.includes(file.type)) {
-      toast.error("Please upload a PNG, JPG, or WEBP image");
+      toast.error(t("invalidImageType"));
       return;
     }
 
     const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
-      toast.error("Image size must be less than 5MB");
+      toast.error(t("imageTooLarge"));
       return;
     }
 
@@ -205,10 +149,10 @@ const EditUserForm = () => {
           ...formData,
           avatar: data.data.url,
         });
-        toast.success("Avatar uploaded successfully!");
+        toast.success(t("avatarUploaded"));
       } else {
         const errorMsg =
-          data.error?.message || data.status_txt || "Failed to upload avatar";
+          data.error?.message || data.status_txt || t("failedUploadAvatar");
         toast.error(errorMsg);
       }
     } catch (error) {
@@ -216,7 +160,7 @@ const EditUserForm = () => {
       const errorMessage =
         error instanceof Error
           ? error.message
-          : "Failed to upload avatar. Please try again.";
+          : t("failedUploadAvatarRetry");
       toast.error(errorMessage);
     } finally {
       setUploadingAvatar(false);
@@ -260,18 +204,18 @@ const EditUserForm = () => {
         const permResult = await updateUserPermissions(userId, selectedPermissions);
         
         if (permResult.success) {
-          toast.success("User updated successfully!");
+          toast.success(t("userUpdatedSuccess"));
           router.push("/settings");
         } else {
-          toast.error(permResult.error || "Failed to update permissions");
+          toast.error(permResult.error || t("failedUpdatePermissions"));
         }
       } else {
-        toast.error(result.error || "Failed to update user");
+        toast.error(result.error || t("failedUpdateUser"));
       }
     } catch (error) {
       console.error("Error updating user:", error);
       const errorMessage =
-        error instanceof Error ? error.message : "Failed to update user";
+        error instanceof Error ? error.message : t("failedUpdateUser");
       toast.error(errorMessage);
     } finally {
       setSaving(false);
@@ -280,8 +224,12 @@ const EditUserForm = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      <div
+        className={`min-h-screen transition-colors duration-200 ${
+          isDarkMode ? "bg-gray-900" : "bg-gray-50"
+        }`}
+      >
+        <GlobalLoading variant="content" titleKey="loadingUsers" />
       </div>
     );
   }
@@ -304,7 +252,7 @@ const EditUserForm = () => {
             }`}
           >
             <MdArrowBack className="text-xl" />
-            Back
+            {t("back")}
           </button>
 
           <div className="flex items-center gap-4 mb-2">
@@ -325,10 +273,10 @@ const EditUserForm = () => {
                   isDarkMode ? "text-gray-100" : "text-gray-900"
                 }`}
               >
-                Edit User
+                {t("editUser")}
               </h1>
               <p className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
-                Update user account information, role, and permissions
+                {t("editUserDesc")}
               </p>
             </div>
           </div>
@@ -353,7 +301,7 @@ const EditUserForm = () => {
                       isDarkMode ? "text-gray-100" : "text-gray-900"
                     }`}
                   >
-                    User Information
+                    {t("userInformation")}
                   </h2>
                 </div>
 
@@ -364,7 +312,7 @@ const EditUserForm = () => {
                         isDarkMode ? "text-gray-300" : "text-gray-700"
                       }`}
                     >
-                      Full Name *
+                      {t("fullName")} *
                     </label>
                     <input
                       type="text"
@@ -386,7 +334,7 @@ const EditUserForm = () => {
                         isDarkMode ? "text-gray-300" : "text-gray-700"
                       }`}
                     >
-                      Email Address *
+                      {t("emailAddress")} *
                     </label>
                     <input
                       type="email"
@@ -408,7 +356,7 @@ const EditUserForm = () => {
                         isDarkMode ? "text-gray-300" : "text-gray-700"
                       }`}
                     >
-                      New Password (leave empty to keep current)
+                      {t("newPasswordOptional")}
                     </label>
                     <input
                       type="password"
@@ -430,7 +378,7 @@ const EditUserForm = () => {
                         isDarkMode ? "text-gray-300" : "text-gray-700"
                       }`}
                     >
-                      Role *
+                      {t("role")} *
                     </label>
                     <select
                       name="role"
@@ -443,9 +391,9 @@ const EditUserForm = () => {
                           : "bg-gray-50 border-gray-300 text-gray-900"
                       }`}
                     >
-                      <option value="teacher">Teacher</option>
-                      <option value="student">Student</option>
-                      <option value="admin">Admin</option>
+                      <option value="teacher">{t("teacherRole")}</option>
+                      <option value="student">{t("studentRole")}</option>
+                      <option value="admin">{t("adminRole")}</option>
                     </select>
                   </div>
 
@@ -475,7 +423,7 @@ const EditUserForm = () => {
                         }`}
                       >
                         <MdImage className="text-xl" />
-                        {uploadingAvatar ? "Uploading..." : "Upload Avatar"}
+                        {uploadingAvatar ? t("uploading") : t("uploadAvatar")}
                         <input
                           type="file"
                           accept="image/png,image/jpeg,image/jpg,image/webp"
@@ -504,7 +452,7 @@ const EditUserForm = () => {
                       isDarkMode ? "text-gray-100" : "text-gray-900"
                     }`}
                   >
-                    Route Permissions
+                    {t("routePermissions")}
                   </h2>
                 </div>
 
@@ -513,11 +461,11 @@ const EditUserForm = () => {
                     isDarkMode ? "text-gray-400" : "text-gray-600"
                   }`}
                 >
-                  Select which routes this user can access:
+                  {t("selectRoutesPrompt")}
                 </p>
 
                 <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {AVAILABLE_ROUTES.map((route) => {
+                  {availableRoutes.map((route) => {
                     const hasPermission = selectedPermissions.includes(route.id);
                     return (
                       <div
@@ -559,7 +507,7 @@ const EditUserForm = () => {
                                 isDarkMode ? "text-gray-500" : "text-gray-500"
                               }`}
                             >
-                              Route: {route.route}
+                              {t("routeLabel")}: {route.route}
                             </p>
                           </div>
                         </div>
@@ -584,7 +532,7 @@ const EditUserForm = () => {
                     isDarkMode ? "text-gray-100" : "text-gray-900"
                   }`}
                 >
-                  Preview
+                  {t("preview")}
                 </h3>
 
                 <div className="space-y-4">
@@ -604,14 +552,14 @@ const EditUserForm = () => {
                         isDarkMode ? "text-gray-400" : "text-gray-600"
                       }`}
                     >
-                      Name
+                      {t("name")}
                     </p>
                     <p
                       className={`text-lg font-semibold ${
                         isDarkMode ? "text-gray-100" : "text-gray-900"
                       }`}
                     >
-                      {formData.name || "Not set"}
+                      {formData.name || t("notSet")}
                     </p>
                   </div>
 
@@ -621,14 +569,14 @@ const EditUserForm = () => {
                         isDarkMode ? "text-gray-400" : "text-gray-600"
                       }`}
                     >
-                      Email
+                      {t("email")}
                     </p>
                     <p
                       className={`text-lg ${
                         isDarkMode ? "text-gray-300" : "text-gray-700"
                       }`}
                     >
-                      {formData.email || "Not set"}
+                      {formData.email || t("notSet")}
                     </p>
                   </div>
 
@@ -638,7 +586,7 @@ const EditUserForm = () => {
                         isDarkMode ? "text-gray-400" : "text-gray-600"
                       }`}
                     >
-                      Role
+                      {t("role")}
                     </p>
                     <span
                       className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
@@ -659,12 +607,12 @@ const EditUserForm = () => {
                         isDarkMode ? "text-gray-400" : "text-gray-600"
                       }`}
                     >
-                      Permissions ({selectedPermissions.length})
+                      {t("permissions")} ({selectedPermissions.length})
                     </p>
                     <div className="space-y-2 max-h-48 overflow-y-auto">
                       {selectedPermissions.length > 0 ? (
                         selectedPermissions.map((permId) => {
-                          const route = AVAILABLE_ROUTES.find(
+                          const route = availableRoutes.find(
                             (r) => r.id === permId
                           );
                           return (
@@ -686,7 +634,7 @@ const EditUserForm = () => {
                             isDarkMode ? "text-gray-500" : "text-gray-400"
                           }`}
                         >
-                          No permissions selected
+                          {t("noPermissionsSelected")}
                         </p>
                       )}
                     </div>
@@ -707,7 +655,7 @@ const EditUserForm = () => {
                   : "border-gray-300 text-gray-700 hover:bg-gray-50"
               }`}
             >
-              Cancel
+              {t("cancel")}
             </button>
             <button
               type="submit"
@@ -717,12 +665,12 @@ const EditUserForm = () => {
               {saving ? (
                 <>
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  Saving...
+                  {t("saving")}
                 </>
               ) : (
                 <>
                   <MdSave />
-                  Save Changes
+                  {t("saveChanges")}
                 </>
               )}
             </button>

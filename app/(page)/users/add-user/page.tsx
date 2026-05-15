@@ -1,4 +1,4 @@
-import AddNewUserForm from "@/component/settingsManagement/AddNewUserForm";
+import AddNewUserForm from "@/component/userManagement/AddNewUserForm";
 
 const page = () => {
   return <AddNewUserForm />;

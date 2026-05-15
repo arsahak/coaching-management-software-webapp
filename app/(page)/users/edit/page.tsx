@@ -1,4 +1,4 @@
-import EditUserForm from "@/component/settingsManagement/EditUserForm";
+import EditUserForm from "@/component/userManagement/EditUserForm";
 import { Suspense } from "react";
 
 const EditUserPage = () => {

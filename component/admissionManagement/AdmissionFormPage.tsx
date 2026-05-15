@@ -241,9 +241,7 @@ export default function AdmissionFormPage({
                 "Created successfully")
         );
 
-        // Redirect to admission main page
         router.push("/admission");
-        router.refresh();
       } else {
         toast.error(
           result.error ||

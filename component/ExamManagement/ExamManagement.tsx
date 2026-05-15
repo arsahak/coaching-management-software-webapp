@@ -8,17 +8,18 @@ import {
   getExamResults,
   getExamStats,
   getExams,
-  sendExamResultSMS,
+  sendExamAlertSMS,
   sendExamScheduleSMS,
   updateExam,
 } from "@/app/actions/exam";
 import { useLanguage } from "@/lib/LanguageContext";
 import { useSidebar } from "@/lib/SidebarContext";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import toast from "react-hot-toast";
 import {
   FaArrowLeft,
+  FaBullhorn,
   FaChartBar,
   FaCheck,
   FaEdit,
@@ -122,6 +123,55 @@ export default function ExamManagement() {
   const [resultForm, setResultForm] = useState<
     Record<string, { marks: string; totalMarks: string; grade: string; present: boolean }>
   >({});
+  /** Shared for all students in this exam's result entry */
+  const [examMarkConfig, setExamMarkConfig] = useState({ totalMarks: "100", passMarks: "40" });
+
+  const [availableClasses, setAvailableClasses] = useState<string[]>([]);
+  const [activeAdmissions, setActiveAdmissions] = useState<Admission[]>([]);
+  const [admissionsReady, setAdmissionsReady] = useState(false);
+
+  // Alert modal state
+  const [alertModal, setAlertModal] = useState<{
+    open: boolean;
+    exam: Exam | null;
+    message: string;
+  }>({ open: false, exam: null, message: "" });
+
+  // Load active admissions once — classes & batches come from this list
+  useEffect(() => {
+    startTransition(async () => {
+      const result = await getAdmissions(1, 5000, "", { status: "active" });
+      if (result.success && result.data) {
+        const allAdmissions = (Array.isArray(result.data) ? result.data : []) as Admission[];
+        setActiveAdmissions(allAdmissions);
+        const unique = Array.from(new Set(allAdmissions.map((a) => a.class).filter(Boolean))).sort((a, b) => {
+          const na = parseInt(a.replace(/\D/g, ""));
+          const nb = parseInt(b.replace(/\D/g, ""));
+          if (!isNaN(na) && !isNaN(nb)) return na - nb;
+          if (!isNaN(na)) return -1;
+          if (!isNaN(nb)) return 1;
+          return a.localeCompare(b);
+        });
+        setAvailableClasses(unique);
+      }
+      setAdmissionsReady(true);
+    });
+  }, []);
+
+  const admissionBatches = useMemo(() => {
+    const cls = examForm.class.trim();
+    if (!cls) return [];
+    const batches = Array.from(
+      new Set(
+        activeAdmissions
+          .filter((a) => (a.class || "").trim() === cls && a.batchName?.trim())
+          .map((a) => a.batchName.trim())
+      )
+    ).sort((a, b) => a.localeCompare(b));
+    const current = examForm.batchName.trim();
+    if (current && !batches.includes(current)) return [...batches, current].sort((a, b) => a.localeCompare(b));
+    return batches;
+  }, [activeAdmissions, examForm.class, examForm.batchName]);
 
   useEffect(() => { loadExams(); }, [filters, search]);
 
@@ -155,6 +205,13 @@ export default function ExamManagement() {
           form[admissionId] = { marks: res.marks.toString(), totalMarks: res.totalMarks.toString(), grade: res.grade || "", present: res.present };
         });
         setResultForm(form);
+        if (data.length > 0) {
+          const tm = data[0].totalMarks;
+          setExamMarkConfig((prev) => ({
+            totalMarks: String(tm),
+            passMarks: prev.passMarks || String(Math.round(tm * 0.4)),
+          }));
+        }
       }
     });
   };
@@ -168,7 +225,9 @@ export default function ExamManagement() {
         setAdmissions(data);
         const form = { ...resultForm };
         data.forEach((adm) => {
-          if (!form[adm._id]) form[adm._id] = { marks: "", totalMarks: "", grade: "", present: true };
+          if (!form[adm._id]) {
+            form[adm._id] = { marks: "", totalMarks: examMarkConfig.totalMarks, grade: "", present: true };
+          }
         });
         setResultForm(form);
       }
@@ -240,16 +299,87 @@ export default function ExamManagement() {
     });
   };
 
+  const handleTotalMarksChange = (value: string) => {
+    setExamMarkConfig((prev) => ({ ...prev, totalMarks: value }));
+    setResultForm((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((id) => {
+        next[id] = { ...next[id], totalMarks: value };
+      });
+      return next;
+    });
+  };
+
+  const getPassStatus = (obtain: string, present: boolean) => {
+    if (!present) return { label: language === "bn" ? "অনুপস্থিত" : "Absent", pass: false as boolean | null };
+    const o = parseFloat(obtain);
+    const passMark = parseFloat(examMarkConfig.passMarks);
+    if (obtain === "" || isNaN(o) || isNaN(passMark)) return { label: "—", pass: null };
+    const passed = o >= passMark;
+    return {
+      label: passed ? (language === "bn" ? "পাস" : "Pass") : (language === "bn" ? "ফেল" : "Fail"),
+      pass: passed,
+    };
+  };
+
+  const liveStats = useMemo(() => {
+    const total = admissions.length;
+    let present = 0;
+    let absent = 0;
+    let passed = 0;
+    const passMark = parseFloat(examMarkConfig.passMarks);
+    admissions.forEach((adm) => {
+      const f = resultForm[adm._id];
+      if (!f?.present) {
+        absent++;
+        return;
+      }
+      present++;
+      const o = parseFloat(f.marks);
+      if (f.marks !== "" && !isNaN(o) && !isNaN(passMark) && o >= passMark) passed++;
+    });
+    return { total, present, absent, passed };
+  }, [admissions, resultForm, examMarkConfig.passMarks]);
+
   const handleSaveResults = async () => {
     if (!selectedExam) return;
+    const totalMarks = parseFloat(examMarkConfig.totalMarks);
+    const passMarks = parseFloat(examMarkConfig.passMarks);
+    if (!totalMarks || totalMarks <= 0) {
+      toast.error(language === "bn" ? "মোট মার্ক সঠিকভাবে দিন" : "Enter valid total marks");
+      return;
+    }
+    if (isNaN(passMarks) || passMarks < 0) {
+      toast.error(language === "bn" ? "পাস মার্ক সঠিকভাবে দিন" : "Enter valid pass marks");
+      return;
+    }
+
     const resultsToSave = admissions
-      .filter((adm) => { const f = resultForm[adm._id]; return f && f.marks && f.totalMarks; })
-      .map((adm) => { const f = resultForm[adm._id]; return { admissionId: adm._id, marks: parseFloat(f.marks), totalMarks: parseFloat(f.totalMarks), grade: f.grade || undefined, present: f.present }; });
-    if (resultsToSave.length === 0) { toast.error(language === "bn" ? "কোন ফলাফল নেই" : "No results to save"); return; }
+      .map((adm) => {
+        const f = resultForm[adm._id] || { marks: "", totalMarks: String(totalMarks), grade: "", present: true };
+        if (!f.present) {
+          return { admissionId: adm._id, marks: 0, totalMarks, grade: "Absent", present: false };
+        }
+        if (f.marks === "" || f.marks === undefined) return null;
+        const obtain = parseFloat(f.marks);
+        const grade = obtain >= passMarks ? "Pass" : "Fail";
+        return { admissionId: adm._id, marks: obtain, totalMarks, grade, present: true };
+      })
+      .filter(Boolean) as { admissionId: string; marks: number; totalMarks: number; grade?: string; present: boolean }[];
+
+    if (resultsToSave.length === 0) {
+      toast.error(language === "bn" ? "কোন ফলাফল নেই — মার্ক পূরণ করুন" : "No results to save — please fill marks");
+      return;
+    }
+
     startTransition(async () => {
       const result = await createBatchExamResults(selectedExam._id, resultsToSave);
       if (result.success) {
-        toast.success(language === "bn" ? `${resultsToSave.length} জন ছাত্রের ফলাফল সংরক্ষণ হয়েছে` : `Results saved for ${resultsToSave.length} student(s)`);
+        toast.success(
+          language === "bn"
+            ? `${resultsToSave.length} জন ছাত্রের ফলাফল সংরক্ষিত ও SMS পাঠানো হয়েছে`
+            : `Results saved & SMS sent for ${resultsToSave.length} student(s)`
+        );
         loadResults(); loadStats();
       } else {
         toast.error(result.error || (language === "bn" ? "ফলাফল সংরক্ষণ করতে ব্যর্থ" : "Failed to save results"));
@@ -257,15 +387,15 @@ export default function ExamManagement() {
     });
   };
 
-  const handleSendResultSMS = async () => {
-    if (!selectedExam) return;
+  const handleSendExamAlert = async () => {
+    if (!alertModal.exam || !alertModal.message.trim()) return;
     startTransition(async () => {
-      const result = await sendExamResultSMS(selectedExam._id);
+      const result = await sendExamAlertSMS(alertModal.exam!._id, alertModal.message.trim());
       if (result.success) {
-        toast.success(language === "bn" ? "ফলাফল এসএমএস সফলভাবে পাঠানো হয়েছে" : "Result SMS sent successfully");
-        loadResults(); loadExams();
+        toast.success(result.message ?? (language === "bn" ? "সতর্কতা সফলভাবে পাঠানো হয়েছে" : "Alert sent successfully"));
+        setAlertModal({ open: false, exam: null, message: "" });
       } else {
-        toast.error(result.error || (language === "bn" ? "এসএমএস পাঠাতে ব্যর্থ" : "Failed to send SMS"));
+        toast.error(result.error ?? (language === "bn" ? "সতর্কতা পাঠাতে ব্যর্থ" : "Failed to send alert"));
       }
     });
   };
@@ -281,7 +411,12 @@ export default function ExamManagement() {
     setViewMode("edit");
   };
 
-  const handleViewResults = (exam: Exam) => { setSelectedExam(exam); setViewMode("results"); };
+  const handleViewResults = (exam: Exam) => {
+    setSelectedExam(exam);
+    setExamMarkConfig({ totalMarks: "100", passMarks: "40" });
+    setResultForm({});
+    setViewMode("results");
+  };
 
   const filteredExams = exams.filter((exam) => {
     if (!search) return true;
@@ -361,8 +496,8 @@ export default function ExamManagement() {
                   className={`w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${isDarkMode ? "bg-gray-700 text-white border-gray-600" : "bg-white text-gray-900 border-gray-300"}`}
                 >
                   <option value="">{language === "bn" ? "সব ক্লাস" : "All Classes"}</option>
-                  {Array.from({ length: 12 }, (_, i) => (
-                    <option key={i + 1} value={`Class ${i + 1}`}>{language === "bn" ? "ক্লাস" : "Class"} {i + 1}</option>
+                  {availableClasses.map((cls) => (
+                    <option key={cls} value={cls}>{cls}</option>
                   ))}
                 </select>
 
@@ -489,7 +624,7 @@ export default function ExamManagement() {
                               >
                                 <FaEdit className="text-base" />
                               </button>
-                              {!exam.scheduleSmsSent && (
+                              {/* {!exam.scheduleSmsSent && (
                                 <button
                                   onClick={() => handleSendScheduleSMS(exam._id)}
                                   disabled={isPending}
@@ -498,7 +633,16 @@ export default function ExamManagement() {
                                 >
                                   <FaSms className="text-base" />
                                 </button>
-                              )}
+                              )} */}
+                              {/* Custom Alert SMS */}
+                              <button
+                                onClick={() => setAlertModal({ open: true, exam, message: "" })}
+                                disabled={isPending}
+                                className={`p-2 rounded-lg transition-colors duration-150 disabled:opacity-50 ${isDarkMode ? "text-orange-400 hover:text-orange-300 hover:bg-orange-900/20" : "text-orange-500 hover:text-orange-600 hover:bg-orange-50"}`}
+                                title={language === "bn" ? "কাস্টম সতর্কতা SMS" : "Send Custom Alert"}
+                              >
+                                <FaBullhorn className="text-base" />
+                              </button>
                               <button
                                 onClick={() => handleDeleteExam(exam._id)}
                                 disabled={isPending}
@@ -579,20 +723,47 @@ export default function ExamManagement() {
                     <label className={`block text-sm font-medium mb-2 ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
                       {language === "bn" ? "ক্লাস" : "Class"} <span className="text-red-500">*</span>
                     </label>
-                    <select value={examForm.class} onChange={(e) => setExamForm({ ...examForm, class: e.target.value })} required className={inputClass(isDarkMode)}>
+                    <select
+                      value={examForm.class}
+                      onChange={(e) => setExamForm({ ...examForm, class: e.target.value, batchName: "" })}
+                      required
+                      className={inputClass(isDarkMode)}
+                    >
                       <option value="">{language === "bn" ? "ক্লাস নির্বাচন করুন" : "Select Class"}</option>
-                      {Array.from({ length: 12 }, (_, i) => (
-                        <option key={i + 1} value={`Class ${i + 1}`}>{language === "bn" ? "ক্লাস" : "Class"} {i + 1}</option>
+                      {availableClasses.map((cls) => (
+                        <option key={cls} value={cls}>{cls}</option>
                       ))}
                     </select>
                   </div>
 
-                  {/* Batch */}
+                  {/* Batch — loaded from active admissions for selected class */}
                   <div>
                     <label className={`block text-sm font-medium mb-2 ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
                       {language === "bn" ? "ব্যাচ" : "Batch"}
                     </label>
-                    <input type="text" value={examForm.batchName} onChange={(e) => setExamForm({ ...examForm, batchName: e.target.value })} className={inputClass(isDarkMode)} placeholder={language === "bn" ? "ব্যাচের নাম (ঐচ্ছিক)" : "Batch name (optional)"} />
+                    <select
+                      value={examForm.batchName}
+                      onChange={(e) => setExamForm({ ...examForm, batchName: e.target.value })}
+                      disabled={!examForm.class.trim() || !admissionsReady}
+                      className={`${inputClass(isDarkMode)} disabled:opacity-60 disabled:cursor-not-allowed`}
+                    >
+                      <option value="">
+                        {!examForm.class.trim()
+                          ? language === "bn"
+                            ? "প্রথমে ক্লাস নির্বাচন করুন"
+                            : "Select class first"
+                          : !admissionsReady
+                          ? language === "bn"
+                            ? "লোড হচ্ছে..."
+                            : "Loading..."
+                          : language === "bn"
+                          ? "ব্যাচ নির্বাচন করুন"
+                          : "Select Batch"}
+                      </option>
+                      {admissionBatches.map((b) => (
+                        <option key={b} value={b}>{b}</option>
+                      ))}
+                    </select>
                   </div>
 
                   {/* Exam Date */}
@@ -646,12 +817,13 @@ export default function ExamManagement() {
                   <button
                     type="submit"
                     disabled={isPending}
-                    className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-medium shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                    className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-medium shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                   >
+                    {viewMode === "create" && <FaSms className="text-sm" />}
                     {isPending
                       ? (language === "bn" ? "সংরক্ষণ হচ্ছে..." : "Saving...")
                       : viewMode === "create"
-                      ? (language === "bn" ? "তৈরি করুন" : "Create Exam")
+                      ? (language === "bn" ? "তৈরি করুন ও SMS পাঠান" : "Create & Notify Students")
                       : (language === "bn" ? "আপডেট করুন" : "Update Exam")}
                   </button>
                 </div>
@@ -662,7 +834,7 @@ export default function ExamManagement() {
 
         {/* ── RESULTS VIEW ──────────────────────────────────────── */}
         {viewMode === "results" && selectedExam && (
-          <div className="space-y-8">
+          <div className="space-y-8 pb-28">
             {/* Header */}
             <div className="flex items-center gap-4">
               <button
@@ -681,53 +853,73 @@ export default function ExamManagement() {
                   {" · "}{new Date(selectedExam.examDate).toLocaleDateString(language === "bn" ? "bn-BD" : "en-US")}
                 </p>
               </div>
-              {!selectedExam.resultSmsSent && (
-                <button
-                  onClick={handleSendResultSMS}
-                  disabled={isPending}
-                  className="px-5 py-2.5 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-lg font-medium shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
-                >
-                  <FaSms />
-                  {language === "bn" ? "ফলাফল SMS পাঠান" : "Send Result SMS"}
-                </button>
-              )}
             </div>
 
-            {/* Stats Cards */}
-            {stats && (
-              <div className={`p-6 rounded-xl shadow-md transition-colors duration-200 ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
-                <h2 className={`text-lg font-semibold mb-4 ${isDarkMode ? "text-gray-100" : "text-gray-900"}`}>
+            {/* Exam Statistics */}
+            <div className={`p-6 rounded-xl shadow-md transition-colors duration-200 ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                <h2 className={`text-lg font-semibold ${isDarkMode ? "text-gray-100" : "text-gray-900"}`}>
                   {language === "bn" ? "পরীক্ষার পরিসংখ্যান" : "Exam Statistics"}
                 </h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {[
-                    { label: language === "bn" ? "মোট ছাত্র" : "Total", value: stats.total, color: isDarkMode ? "text-gray-100" : "text-gray-900" },
-                    { label: language === "bn" ? "উপস্থিত" : "Present", value: stats.present, color: isDarkMode ? "text-green-400" : "text-green-600" },
-                    { label: language === "bn" ? "অনুপস্থিত" : "Absent", value: stats.absent, color: isDarkMode ? "text-red-400" : "text-red-600" },
-                    { label: language === "bn" ? "পাস" : "Passed", value: stats.passed, color: isDarkMode ? "text-blue-400" : "text-blue-600" },
-                  ].map((s) => (
-                    <div key={s.label} className={`p-4 rounded-lg transition-colors duration-200 ${isDarkMode ? "bg-gray-700/50" : "bg-gray-50"}`}>
-                      <p className={`text-xs font-medium uppercase tracking-wide mb-2 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>{s.label}</p>
-                      <p className={`text-3xl font-bold ${s.color}`}>{s.value}</p>
-                    </div>
-                  ))}
+                {selectedExam.batchName && (
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium w-fit ${isDarkMode ? "bg-blue-900/40 text-blue-300" : "bg-blue-100 text-blue-800"}`}>
+                    {language === "bn" ? "ব্যাচ" : "Batch"}: {selectedExam.batchName}
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  { label: language === "bn" ? "মোট ছাত্র" : "Total Students", value: liveStats.total, color: isDarkMode ? "text-gray-100" : "text-gray-900" },
+                  { label: language === "bn" ? "উপস্থিত" : "Present", value: liveStats.present, color: isDarkMode ? "text-green-400" : "text-green-600" },
+                  { label: language === "bn" ? "অনুপস্থিত" : "Absent", value: liveStats.absent, color: isDarkMode ? "text-red-400" : "text-red-600" },
+                  { label: language === "bn" ? "পাস" : "Passed", value: liveStats.passed, color: isDarkMode ? "text-blue-400" : "text-blue-600" },
+                ].map((s) => (
+                  <div key={s.label} className={`p-4 rounded-lg ${isDarkMode ? "bg-gray-700/50" : "bg-gray-50"}`}>
+                    <p className={`text-xs font-medium uppercase tracking-wide mb-2 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>{s.label}</p>
+                    <p className={`text-3xl font-bold ${s.color}`}>{s.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Mark setup — total & pass marks */}
+            <div className={`p-6 rounded-xl shadow-md ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+              <h3 className={`text-sm font-semibold mb-4 ${isDarkMode ? "text-gray-200" : "text-gray-800"}`}>
+                {language === "bn" ? "মার্ক সেটআপ (সব ছাত্রের জন্য)" : "Mark Setup (all students)"}
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
+                    {language === "bn" ? "মোট মার্ক" : "Total Marks"} <span className="text-red-500">*</span>
+                  </label>
+                  <input type="number" min="1" step="0.01" value={examMarkConfig.totalMarks} onChange={(e) => handleTotalMarksChange(e.target.value)} className={inputClass(isDarkMode)} placeholder="100" />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
+                    {language === "bn" ? "পাস মার্ক" : "Pass Marks"} <span className="text-red-500">*</span>
+                  </label>
+                  <input type="number" min="0" step="0.01" value={examMarkConfig.passMarks} onChange={(e) => setExamMarkConfig((prev) => ({ ...prev, passMarks: e.target.value }))} className={inputClass(isDarkMode)} placeholder="40" />
                 </div>
               </div>
-            )}
+            </div>
 
             {/* Results Entry Table */}
             <div className={`rounded-xl shadow-md overflow-hidden transition-colors duration-200 ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
-              <div className={`px-6 py-4 flex items-center justify-between border-b ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
-                <h3 className={`text-lg font-semibold ${isDarkMode ? "text-gray-100" : "text-gray-900"}`}>
-                  {language === "bn" ? "ফলাফল এন্ট্রি" : "Result Entry"}
-                </h3>
-                <button
-                  onClick={handleSaveResults}
-                  disabled={isPending}
-                  className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-medium shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                >
-                  {isPending ? (language === "bn" ? "সংরক্ষণ হচ্ছে..." : "Saving...") : (language === "bn" ? "ফলাফল সংরক্ষণ করুন" : "Save Results")}
-                </button>
+              <div className={`px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
+                <div>
+                  <h3 className={`text-lg font-semibold ${isDarkMode ? "text-gray-100" : "text-gray-900"}`}>
+                    {language === "bn" ? "ফলাফল এন্ট্রি" : "Result Entry"}
+                    <span className={`ml-2 text-sm font-normal ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                      ({admissions.length} {language === "bn" ? "জন ছাত্র" : "students"})
+                    </span>
+                  </h3>
+                  <p className={`text-xs mt-0.5 flex items-center gap-1 ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}>
+                    <FaSms className="text-[10px]" />
+                    {language === "bn"
+                      ? "সংরক্ষণ করলে সব ছাত্রকে স্বয়ংক্রিয়ভাবে SMS পাঠানো হবে"
+                      : "Saving will automatically send result SMS to all students"}
+                  </p>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -737,10 +929,10 @@ export default function ExamManagement() {
                         { label: language === "bn" ? "ছাত্র আইডি" : "Student ID", cls: "text-left" },
                         { label: language === "bn" ? "ছাত্রের নাম" : "Student Name", cls: "text-left" },
                         { label: language === "bn" ? "উপস্থিতি" : "Attendance", cls: "text-center" },
-                        { label: language === "bn" ? "মার্ক" : "Marks", cls: "text-center" },
-                        { label: language === "bn" ? "মোট মার্ক" : "Total", cls: "text-center" },
-                        { label: language === "bn" ? "গ্রেড" : "Grade", cls: "text-center" },
+                        { label: language === "bn" ? "প্রাপ্ত মার্ক" : "Obtain Marks", cls: "text-center" },
+                        { label: language === "bn" ? "ফলাফল" : "Result", cls: "text-center" },
                         { label: language === "bn" ? "%" : "%", cls: "text-center" },
+                        { label: language === "bn" ? "স্ট্যাটাস" : "Status", cls: "text-center" },
                       ].map((h) => (
                         <th key={h.label} className={`px-6 py-4 ${h.cls} text-xs font-semibold uppercase tracking-wider transition-colors duration-200 ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
                           {h.label}
@@ -750,13 +942,15 @@ export default function ExamManagement() {
                   </thead>
                   <tbody className={`divide-y transition-colors duration-200 ${isDarkMode ? "bg-gray-800 divide-gray-700" : "bg-white divide-gray-200"}`}>
                     {admissions.map((admission) => {
-                      const form = resultForm[admission._id] || { marks: "", totalMarks: "", grade: "", present: true };
-                      const pct = form.marks && form.totalMarks
-                        ? ((parseFloat(form.marks) / parseFloat(form.totalMarks)) * 100).toFixed(1)
+                      const form = resultForm[admission._id] || { marks: "", totalMarks: examMarkConfig.totalMarks, grade: "", present: true };
+                      const total = parseFloat(examMarkConfig.totalMarks);
+                      const pct = form.marks && !isNaN(total) && total > 0
+                        ? ((parseFloat(form.marks) / total) * 100).toFixed(1)
                         : "—";
+                      const passStatus = getPassStatus(form.marks, form.present);
                       const existingResult = results.find((r) => (typeof r.admissionId === "string" ? r.admissionId : r.admissionId._id) === admission._id);
 
-                      const smallInput = `w-20 px-2 py-1.5 border rounded-lg text-center text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${isDarkMode ? "border-gray-600 bg-gray-700 text-white disabled:opacity-40" : "border-gray-300 bg-white text-gray-900 disabled:opacity-40"}`;
+                      const smallInput = `w-24 px-2 py-1.5 border rounded-lg text-center text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${isDarkMode ? "border-gray-600 bg-gray-700 text-white disabled:opacity-40" : "border-gray-300 bg-white text-gray-900 disabled:opacity-40"}`;
 
                       return (
                         <tr key={admission._id} className={`transition-colors duration-150 ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-50"}`}>
@@ -788,16 +982,42 @@ export default function ExamManagement() {
                             </div>
                           </td>
                           <td className="px-6 py-4 text-center">
-                            <input type="number" value={form.marks} onChange={(e) => setResultForm({ ...resultForm, [admission._id]: { ...form, marks: e.target.value } })} min="0" step="0.01" disabled={!form.present} className={smallInput} placeholder="0" />
+                            <input
+                              type="number"
+                              value={form.marks}
+                              onChange={(e) => setResultForm({ ...resultForm, [admission._id]: { ...form, marks: e.target.value, totalMarks: examMarkConfig.totalMarks } })}
+                              min="0"
+                              max={examMarkConfig.totalMarks}
+                              step="0.01"
+                              disabled={!form.present}
+                              className={smallInput}
+                              placeholder="0"
+                            />
                           </td>
                           <td className="px-6 py-4 text-center">
-                            <input type="number" value={form.totalMarks} onChange={(e) => setResultForm({ ...resultForm, [admission._id]: { ...form, totalMarks: e.target.value } })} min="1" step="0.01" disabled={!form.present} className={smallInput} placeholder="100" />
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <input type="text" value={form.grade} onChange={(e) => setResultForm({ ...resultForm, [admission._id]: { ...form, grade: e.target.value } })} placeholder="A+" disabled={!form.present} className={`w-16 px-2 py-1.5 border rounded-lg text-center text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${isDarkMode ? "border-gray-600 bg-gray-700 text-white disabled:opacity-40" : "border-gray-300 bg-white text-gray-900 disabled:opacity-40"}`} />
+                            {passStatus.pass === null ? (
+                              <span className={`text-sm ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>—</span>
+                            ) : (
+                              <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${passStatus.pass ? (isDarkMode ? "bg-green-900/40 text-green-300" : "bg-green-100 text-green-800") : (isDarkMode ? "bg-red-900/40 text-red-300" : "bg-red-100 text-red-800")}`}>
+                                {passStatus.label}
+                              </span>
+                            )}
                           </td>
                           <td className={`px-6 py-4 text-center text-sm font-semibold ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
                             {pct !== "—" ? `${pct}%` : pct}
+                          </td>
+                          <td className="px-6 py-4 text-center whitespace-nowrap">
+                            {existingResult ? (
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${isDarkMode ? "bg-green-900/30 text-green-400" : "bg-green-50 text-green-700"}`}>
+                                <FaCheck className="text-[9px]" />
+                                {language === "bn" ? "সংরক্ষিত" : "Saved"}
+                                {existingResult.resultSmsSent && <FaSms className="text-[9px] ml-0.5" title="SMS sent" />}
+                              </span>
+                            ) : (
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${isDarkMode ? "bg-gray-700 text-gray-400" : "bg-gray-100 text-gray-500"}`}>
+                                {language === "bn" ? "নতুন" : "New"}
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -805,11 +1025,131 @@ export default function ExamManagement() {
                   </tbody>
                 </table>
               </div>
+              {admissions.length === 0 && (
+                <div className={`px-6 py-12 text-center ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                  {language === "bn" ? "এই ব্যাচে কোনো সক্রিয় ছাত্র নেই" : "No active students in this batch"}
+                </div>
+              )}
+            </div>
+
+            {/* Bottom save — sends result SMS to all */}
+            <div className={`sticky bottom-0 z-10 -mx-2 px-4 py-4 mt-4 rounded-xl border shadow-lg ${isDarkMode ? "bg-gray-900/95 border-gray-700" : "bg-white/95 border-gray-200"} backdrop-blur-sm`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 max-w-full">
+                <p className={`text-sm flex items-center gap-2 ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
+                  <FaSms className="shrink-0 text-blue-500" />
+                  {language === "bn"
+                    ? "সংরক্ষণ করলে সব ছাত্রের ফলাফল SMS পাঠানো হবে"
+                    : "Save will send result SMS to every student"}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSaveResults}
+                  disabled={isPending || admissions.length === 0}
+                  className="flex items-center justify-center gap-2 w-full sm:w-auto px-8 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  <FaSms />
+                  {isPending
+                    ? (language === "bn" ? "সংরক্ষণ ও SMS পাঠানো হচ্ছে..." : "Saving & sending SMS...")
+                    : (language === "bn" ? "সব ফলাফল সংরক্ষণ ও SMS পাঠান" : "Save All & Send SMS")}
+                </button>
+              </div>
             </div>
           </div>
         )}
 
       </div>
+
+      {/* ── EXAM ALERT MODAL ────────────────────────────────────── */}
+      {alertModal.open && alertModal.exam && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className={`w-full max-w-lg rounded-2xl shadow-2xl border ${isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
+            {/* Modal header */}
+            <div className={`flex items-start justify-between p-5 border-b ${isDarkMode ? "border-gray-700" : "border-gray-100"}`}>
+              <div className="flex items-start gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isDarkMode ? "bg-orange-900/30" : "bg-orange-50"}`}>
+                  <FaBullhorn className="text-orange-500" />
+                </div>
+                <div>
+                  <h3 className={`font-semibold ${isDarkMode ? "text-gray-100" : "text-gray-900"}`}>
+                    {language === "bn" ? "কাস্টম সতর্কতা পাঠান" : "Send Custom Alert"}
+                  </h3>
+                  <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                    {alertModal.exam.examName} — {alertModal.exam.class}
+                    {alertModal.exam.batchName ? ` / ${alertModal.exam.batchName}` : ""}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setAlertModal({ open: false, exam: null, message: "" })}
+                className={`p-2 rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-100 text-gray-500"}`}
+              >
+                <FaTimes />
+              </button>
+            </div>
+
+            {/* Variable chips */}
+            <div className="px-5 pt-4">
+              <p className={`text-xs font-medium mb-2 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                {language === "bn" ? "ভেরিয়েবল যোগ করতে ক্লিক করুন:" : "Click to insert variables:"}
+              </p>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {["{studentName}", "{examName}", "{subject}", "{class}", "{batch}", "{examDate}", "{examTime}"].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setAlertModal((prev) => ({ ...prev, message: prev.message + v }))}
+                    className={`text-xs px-2.5 py-1 rounded-full font-mono border transition-colors ${isDarkMode ? "border-blue-700 bg-blue-900/20 text-blue-300 hover:bg-blue-900/40" : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"}`}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Message textarea */}
+            <div className="px-5 pb-2">
+              <textarea
+                value={alertModal.message}
+                onChange={(e) => setAlertModal((prev) => ({ ...prev, message: e.target.value }))}
+                rows={5}
+                placeholder={language === "bn" ? "সতর্কতা বার্তা লিখুন..." : "Type your alert message here..."}
+                className={`w-full px-3 py-2.5 text-sm rounded-lg border resize-none font-mono leading-relaxed focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all ${isDarkMode ? "bg-gray-700 text-gray-100 border-gray-600 placeholder-gray-500" : "bg-gray-50 text-gray-900 border-gray-300 placeholder-gray-400"}`}
+              />
+              <div className="flex items-center justify-between mt-1.5">
+                <p className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
+                  {language === "bn"
+                    ? `সকল ছাত্রদের পাঠানো হবে: ${alertModal.exam.class}${alertModal.exam.batchName ? ` / ${alertModal.exam.batchName}` : ""}`
+                    : `Will send to all students: ${alertModal.exam.class}${alertModal.exam.batchName ? ` / ${alertModal.exam.batchName}` : ""}`}
+                </p>
+                <span className={`text-xs font-mono ${alertModal.message.length > 320 ? "text-red-500" : alertModal.message.length > 160 ? isDarkMode ? "text-yellow-400" : "text-yellow-600" : isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
+                  {alertModal.message.length} / 160
+                </span>
+              </div>
+            </div>
+
+            {/* Modal footer */}
+            <div className={`flex items-center justify-end gap-3 p-5 border-t ${isDarkMode ? "border-gray-700" : "border-gray-100"}`}>
+              <button
+                onClick={() => setAlertModal({ open: false, exam: null, message: "" })}
+                className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${isDarkMode ? "border-gray-600 text-gray-300 hover:bg-gray-700" : "border-gray-300 text-gray-700 hover:bg-gray-50"}`}
+              >
+                {language === "bn" ? "বাতিল" : "Cancel"}
+              </button>
+              <button
+                onClick={handleSendExamAlert}
+                disabled={isPending || !alertModal.message.trim()}
+                className="flex items-center gap-2 px-5 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                <FaBullhorn className="text-xs" />
+                {isPending
+                  ? (language === "bn" ? "পাঠানো হচ্ছে..." : "Sending...")
+                  : (language === "bn" ? "সতর্কতা পাঠান" : "Send Alert")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

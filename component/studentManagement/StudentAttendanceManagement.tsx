@@ -15,10 +15,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import toast from "react-hot-toast";
 import {
+  FaArrowLeft,
   FaCalendarAlt,
   FaChartPie,
   FaCheck,
   FaClock,
+  FaEye,
   FaPaperPlane,
   FaTimes,
   FaUserClock,
@@ -105,6 +107,18 @@ export default function StudentAttendanceManagement() {
 
   // Batch Stats for Dashboard
   const [batchStats, setBatchStats] = useState<BatchStats[]>([]);
+
+  // Batch Detail View
+  const [selectedBatch, setSelectedBatch] = useState<{ batchName: string; class: string } | null>(null);
+  const [batchDetailRange, setBatchDetailRange] = useState(() => {
+    const now = new Date();
+    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+    const today = now.toISOString().split("T")[0];
+    return { startDate: firstOfMonth, endDate: today };
+  });
+  const [batchDetailStudents, setBatchDetailStudents] = useState<Admission[]>([]);
+  const [batchDetailAttendances, setBatchDetailAttendances] = useState<Attendance[]>([]);
+  const [batchDetailLoading, setBatchDetailLoading] = useState(false);
 
   // Load all unique classes from all admissions
   useEffect(() => {
@@ -278,6 +292,62 @@ export default function StudentAttendanceManagement() {
     setBatchStats(stats);
   };
 
+  // ── Batch Detail helpers ───────────────────────────────────────────────────
+
+  /** Returns every calendar day in [start, end] as YYYY-MM-DD strings */
+  const generateDateRange = (start: string, end: string): string[] => {
+    const dates: string[] = [];
+    const cur = new Date(start + "T00:00:00");
+    const last = new Date(end + "T00:00:00");
+    while (cur <= last) {
+      dates.push(cur.toISOString().split("T")[0]);
+      cur.setDate(cur.getDate() + 1);
+    }
+    return dates;
+  };
+
+  const loadBatchDetail = async (
+    batchName: string,
+    className: string,
+    range = batchDetailRange,
+  ) => {
+    setBatchDetailLoading(true);
+    try {
+      const [admResult, attResult] = await Promise.all([
+        getAdmissions(1, 500, "", {
+          class: className,
+          batch: batchName,
+          status: "active",
+        }),
+        getAttendances(1, 10000, {
+          class: className,
+          batchName,
+          startDate: range.startDate,
+          endDate: range.endDate,
+        }),
+      ]);
+
+      if (admResult.success && admResult.data) {
+        setBatchDetailStudents(
+          (Array.isArray(admResult.data) ? admResult.data : []) as Admission[],
+        );
+      }
+      if (attResult.success && attResult.data) {
+        setBatchDetailAttendances(
+          (Array.isArray(attResult.data) ? attResult.data : []) as Attendance[],
+        );
+      }
+    } finally {
+      setBatchDetailLoading(false);
+    }
+  };
+
+  const handleOpenBatchDetail = (batch: BatchStats) => {
+    setSelectedBatch({ batchName: batch.batchName, class: batch.class });
+  };
+
+  // ── End batch detail helpers ───────────────────────────────────────────────
+
   const handleMarkAttendance = async (
     admissionId: string,
     status: "present" | "absent",
@@ -399,6 +469,14 @@ export default function StudentAttendanceManagement() {
       loadAdmissions();
     }
   }, [activeTab]);
+
+  // Load batch detail whenever selected batch or date range changes
+  useEffect(() => {
+    if (selectedBatch) {
+      loadBatchDetail(selectedBatch.batchName, selectedBatch.class, batchDetailRange);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBatch, batchDetailRange]);
 
   return (
     <div
@@ -632,7 +710,8 @@ export default function StudentAttendanceManagement() {
                 {language === "bn" ? "ব্যাচওয়ারি হাজিরা রিপোর্ট" : "Batch-wise Attendance Report"}
               </h3>
 
-              {batchStats.length > 0 ? (
+              {/* ── Batch List Table ─────────────────────────────────────────── */}
+              {!selectedBatch && (batchStats.length > 0 ? (
                 <div className={`rounded-lg border overflow-hidden ${
                   isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"
                 }`}>
@@ -662,6 +741,9 @@ export default function StudentAttendanceManagement() {
                         </th>
                         <th className={`px-4 py-3 text-center font-semibold ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
                           {language === "bn" ? "স্ট্যাটাস" : "Status"}
+                        </th>
+                        <th className={`px-4 py-3 text-center font-semibold ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
+                          {language === "bn" ? "বিস্তারিত" : "Details"}
                         </th>
                       </tr>
                     </thead>
@@ -769,6 +851,21 @@ export default function StudentAttendanceManagement() {
                               </span>
                             )}
                           </td>
+
+                          {/* Details Button */}
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => handleOpenBatchDetail(batch)}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                                isDarkMode
+                                  ? "bg-blue-900/30 text-blue-400 hover:bg-blue-800/50 hover:text-blue-300"
+                                  : "bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700"
+                              }`}
+                            >
+                              <FaEye className="text-[10px]" />
+                              {language === "bn" ? "দেখুন" : "View"}
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -806,7 +903,308 @@ export default function StudentAttendanceManagement() {
                       : "Try changing class or batch filter"}
                   </p>
                 </div>
-              )}
+              ))}
+
+              {/* ── Batch Detail View (date-wise student matrix) ─────────────── */}
+              {selectedBatch && (() => {
+                const allDates = generateDateRange(batchDetailRange.startDate, batchDetailRange.endDate);
+                // Only show dates that have at least one attendance record
+                const datesWithRecords = allDates.filter(d =>
+                  batchDetailAttendances.some(a => a.date.split("T")[0] === d)
+                );
+                const displayDates = datesWithRecords.length > 0 ? datesWithRecords : allDates;
+
+                // Build admissionId → date → status lookup
+                const attMap: Record<string, Record<string, "present" | "absent">> = {};
+                batchDetailAttendances.forEach(att => {
+                  const admId = typeof att.admissionId === "string"
+                    ? att.admissionId
+                    : (att.admissionId as Admission)._id;
+                  const d = att.date.split("T")[0];
+                  if (!attMap[admId]) attMap[admId] = {};
+                  attMap[admId][d] = att.status;
+                });
+
+                return (
+                  <div className="space-y-4">
+                    {/* Header row: back + info + date range */}
+                    <div className={`flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-xl border ${
+                      isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"
+                    }`}>
+                      <button
+                        onClick={() => setSelectedBatch(null)}
+                        className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all shrink-0 ${
+                          isDarkMode
+                            ? "bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white"
+                            : "bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-900"
+                        }`}
+                      >
+                        <FaArrowLeft className="text-xs" />
+                        {language === "bn" ? "ফিরে যান" : "Back"}
+                      </button>
+
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-base font-bold truncate ${isDarkMode ? "text-white" : "text-gray-900"}`}>
+                          {selectedBatch.batchName}
+                        </p>
+                        <p className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                          {language === "bn" ? "ক্লাস:" : "Class:"} {selectedBatch.class}
+                          {" · "}
+                          {batchDetailStudents.length} {language === "bn" ? "জন শিক্ষার্থী" : "students"}
+                        </p>
+                      </div>
+
+                      {/* Date range selectors */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <FaCalendarAlt className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} />
+                        <input
+                          type="date"
+                          value={batchDetailRange.startDate}
+                          onChange={e => setBatchDetailRange(r => ({ ...r, startDate: e.target.value }))}
+                          className={`px-3 py-1.5 text-xs rounded-lg border outline-none transition-all ${
+                            isDarkMode
+                              ? "bg-gray-700 border-gray-600 text-white focus:border-blue-500"
+                              : "bg-gray-50 border-gray-300 text-gray-700 focus:border-blue-500"
+                          }`}
+                        />
+                        <span className={`text-xs font-medium ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                          {language === "bn" ? "থেকে" : "to"}
+                        </span>
+                        <input
+                          type="date"
+                          value={batchDetailRange.endDate}
+                          onChange={e => setBatchDetailRange(r => ({ ...r, endDate: e.target.value }))}
+                          className={`px-3 py-1.5 text-xs rounded-lg border outline-none transition-all ${
+                            isDarkMode
+                              ? "bg-gray-700 border-gray-600 text-white focus:border-blue-500"
+                              : "bg-gray-50 border-gray-300 text-gray-700 focus:border-blue-500"
+                          }`}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Loading skeleton */}
+                    {batchDetailLoading ? (
+                      <div className={`p-8 text-center rounded-xl border animate-pulse ${
+                        isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"
+                      }`}>
+                        <div className={`h-4 rounded w-48 mx-auto mb-3 ${isDarkMode ? "bg-gray-700" : "bg-gray-200"}`} />
+                        <div className={`h-3 rounded w-32 mx-auto ${isDarkMode ? "bg-gray-700" : "bg-gray-200"}`} />
+                      </div>
+                    ) : batchDetailStudents.length === 0 ? (
+                      <div className={`p-10 text-center rounded-xl border ${
+                        isDarkMode ? "bg-gray-800 border-gray-700" : "bg-gray-50 border-gray-200"
+                      }`}>
+                        <FaUserClock className={`text-3xl mx-auto mb-3 ${isDarkMode ? "text-gray-600" : "text-gray-400"}`} />
+                        <p className={`text-sm font-medium ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                          {language === "bn" ? "কোন শিক্ষার্থী পাওয়া যায়নি" : "No students found in this batch"}
+                        </p>
+                      </div>
+                    ) : (
+                      /* Attendance Matrix Table */
+                      <div className={`rounded-xl border overflow-hidden ${
+                        isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"
+                      }`}>
+                        <div className="overflow-x-auto">
+                          <table className="text-xs border-collapse" style={{ minWidth: "100%" }}>
+                            <thead className={isDarkMode ? "bg-gray-700/70" : "bg-gray-50"}>
+                              <tr>
+                                {/* Sticky student column header */}
+                                <th
+                                  className={`sticky left-0 z-10 px-4 py-3 text-left font-semibold whitespace-nowrap border-r ${
+                                    isDarkMode
+                                      ? "bg-gray-700 text-gray-300 border-gray-600"
+                                      : "bg-gray-50 text-gray-700 border-gray-200"
+                                  }`}
+                                  style={{ minWidth: 180 }}
+                                >
+                                  {language === "bn" ? "শিক্ষার্থীর নাম" : "Student Name"}
+                                </th>
+
+                                {/* Date columns */}
+                                {displayDates.map(d => {
+                                  const dt = new Date(d + "T00:00:00");
+                                  const dayNum = dt.getDate().toString().padStart(2, "0");
+                                  const dayName = dt.toLocaleDateString("en-US", { weekday: "short" });
+                                  return (
+                                    <th
+                                      key={d}
+                                      className={`px-2 py-3 text-center font-semibold whitespace-nowrap border-r ${
+                                        isDarkMode ? "text-gray-300 border-gray-600" : "text-gray-600 border-gray-200"
+                                      }`}
+                                      style={{ minWidth: 46 }}
+                                    >
+                                      <div>{dayNum}</div>
+                                      <div className={`text-[10px] font-normal ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>{dayName}</div>
+                                    </th>
+                                  );
+                                })}
+
+                                {/* Summary column */}
+                                <th
+                                  className={`sticky right-0 z-10 px-3 py-3 text-center font-semibold whitespace-nowrap border-l ${
+                                    isDarkMode
+                                      ? "bg-gray-700 text-gray-300 border-gray-600"
+                                      : "bg-gray-50 text-gray-700 border-gray-200"
+                                  }`}
+                                  style={{ minWidth: 72 }}
+                                >
+                                  {language === "bn" ? "%" : "%"}
+                                </th>
+                              </tr>
+                            </thead>
+
+                            <tbody className={`divide-y ${isDarkMode ? "divide-gray-700" : "divide-gray-200"}`}>
+                              {batchDetailStudents.map(student => {
+                                const studentDayMap = attMap[student._id] || {};
+                                const presentCount = displayDates.filter(d => studentDayMap[d] === "present").length;
+                                const markedCount = displayDates.filter(d => studentDayMap[d] !== undefined).length;
+                                const pct = markedCount > 0 ? Math.round((presentCount / markedCount) * 100) : null;
+
+                                return (
+                                  <tr
+                                    key={student._id}
+                                    className={isDarkMode ? "hover:bg-gray-700/30" : "hover:bg-blue-50/30"}
+                                  >
+                                    {/* Sticky name cell */}
+                                    <td
+                                      className={`sticky left-0 z-10 px-4 py-2.5 border-r ${
+                                        isDarkMode
+                                          ? "bg-gray-800 border-gray-700"
+                                          : "bg-white border-gray-200"
+                                      }`}
+                                    >
+                                      <div className={`font-medium truncate max-w-[160px] ${isDarkMode ? "text-white" : "text-gray-900"}`}>
+                                        {student.studentName}
+                                      </div>
+                                      {student.studentId && (
+                                        <div className={`text-[10px] ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
+                                          {student.studentId}
+                                        </div>
+                                      )}
+                                    </td>
+
+                                    {/* Date cells */}
+                                    {displayDates.map(d => {
+                                      const status = studentDayMap[d];
+                                      return (
+                                        <td
+                                          key={d}
+                                          className={`px-1 py-2.5 text-center border-r ${
+                                            isDarkMode ? "border-gray-700" : "border-gray-100"
+                                          }`}
+                                        >
+                                          {status === "present" ? (
+                                            <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-bold ${
+                                              isDarkMode ? "bg-green-900/40 text-green-400" : "bg-green-100 text-green-700"
+                                            }`}>
+                                              P
+                                            </span>
+                                          ) : status === "absent" ? (
+                                            <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-bold ${
+                                              isDarkMode ? "bg-red-900/40 text-red-400" : "bg-red-100 text-red-700"
+                                            }`}>
+                                              A
+                                            </span>
+                                          ) : (
+                                            <span className={`text-[10px] ${isDarkMode ? "text-gray-700" : "text-gray-300"}`}>
+                                              —
+                                            </span>
+                                          )}
+                                        </td>
+                                      );
+                                    })}
+
+                                    {/* Summary cell */}
+                                    <td
+                                      className={`sticky right-0 z-10 px-3 py-2.5 text-center border-l ${
+                                        isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"
+                                      }`}
+                                    >
+                                      {pct !== null ? (
+                                        <span className={`text-xs font-bold ${
+                                          pct >= 80
+                                            ? isDarkMode ? "text-green-400" : "text-green-600"
+                                            : pct >= 60
+                                            ? isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                                            : isDarkMode ? "text-red-400" : "text-red-600"
+                                        }`}>
+                                          {pct}%
+                                        </span>
+                                      ) : (
+                                        <span className={`text-[10px] ${isDarkMode ? "text-gray-600" : "text-gray-400"}`}>—</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+
+                            {/* Footer: column totals */}
+                            <tfoot className={isDarkMode ? "bg-gray-700/50" : "bg-gray-50"}>
+                              <tr className={`border-t ${isDarkMode ? "border-gray-600" : "border-gray-200"}`}>
+                                <td
+                                  className={`sticky left-0 z-10 px-4 py-2.5 text-xs font-semibold border-r ${
+                                    isDarkMode ? "bg-gray-700 text-gray-400 border-gray-600" : "bg-gray-50 text-gray-500 border-gray-200"
+                                  }`}
+                                >
+                                  {language === "bn" ? "মোট উপস্থিত" : "Total Present"}
+                                </td>
+                                {displayDates.map(d => {
+                                  const dayPresent = batchDetailStudents.filter(s => attMap[s._id]?.[d] === "present").length;
+                                  const dayTotal = batchDetailStudents.filter(s => attMap[s._id]?.[d] !== undefined).length;
+                                  return (
+                                    <td
+                                      key={d}
+                                      className={`px-1 py-2.5 text-center border-r ${
+                                        isDarkMode ? "border-gray-600" : "border-gray-200"
+                                      }`}
+                                    >
+                                      {dayTotal > 0 ? (
+                                        <span className={`text-[10px] font-semibold ${isDarkMode ? "text-green-400" : "text-green-600"}`}>
+                                          {dayPresent}/{dayTotal}
+                                        </span>
+                                      ) : (
+                                        <span className={`text-[10px] ${isDarkMode ? "text-gray-700" : "text-gray-300"}`}>—</span>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                                <td
+                                  className={`sticky right-0 z-10 border-l ${
+                                    isDarkMode ? "bg-gray-700 border-gray-600" : "bg-gray-50 border-gray-200"
+                                  }`}
+                                />
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+
+                        {/* Legend */}
+                        <div className={`flex items-center gap-4 px-4 py-2.5 border-t text-xs ${
+                          isDarkMode ? "border-gray-700 text-gray-400" : "border-gray-200 text-gray-500"
+                        }`}>
+                          <span className="flex items-center gap-1.5">
+                            <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[9px] font-bold ${isDarkMode ? "bg-green-900/40 text-green-400" : "bg-green-100 text-green-700"}`}>P</span>
+                            {language === "bn" ? "উপস্থিত" : "Present"}
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[9px] font-bold ${isDarkMode ? "bg-red-900/40 text-red-400" : "bg-red-100 text-red-700"}`}>A</span>
+                            {language === "bn" ? "অনুপস্থিত" : "Absent"}
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <span className={`text-sm ${isDarkMode ? "text-gray-600" : "text-gray-300"}`}>—</span>
+                            {language === "bn" ? "চিহ্নিত নয়" : "Not Marked"}
+                          </span>
+                          <span className={`ml-auto ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
+                            {displayDates.length} {language === "bn" ? "দিন" : "days"}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}

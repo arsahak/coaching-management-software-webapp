@@ -12,6 +12,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { BiUser } from "react-icons/bi";
 import { FaSms, FaUserPlus } from "react-icons/fa";
 import {
   IoIosArrowDown,
@@ -68,6 +69,11 @@ const getMenuItems = (language: string): MenuItem[] => [
     icon: <FaSms className="w-5 h-5" />,
     label: getTranslation("Bulk SMS", language),
     path: "/bluk-sms",
+  },
+  {
+    icon: <BiUser className="w-5 h-5" />,
+    label: getTranslation("users", language),
+    path: "/users",
   },
   {
     icon: <MdSettings className="w-5 h-5" />,
@@ -193,8 +199,8 @@ export default function Sidebar() {
                           ? "bg-blue-900 text-blue-300"
                           : "bg-blue-50 text-blue-600"
                         : isDarkMode
-                        ? "text-gray-300 hover:bg-gray-800"
-                        : "text-gray-700 hover:bg-gray-50"
+                          ? "text-gray-300 hover:bg-gray-800"
+                          : "text-gray-700 hover:bg-gray-50"
                     }`}
                   >
                     <span
@@ -250,8 +256,8 @@ export default function Sidebar() {
                               ? "text-blue-300 bg-blue-900"
                               : "text-blue-600 bg-blue-50"
                             : isDarkMode
-                            ? "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
-                            : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                              ? "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+                              : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                         }`}
                       >
                         {subItem.label}

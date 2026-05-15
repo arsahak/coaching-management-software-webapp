@@ -1,6 +1,7 @@
 import { getAdmissions } from "@/app/actions/admission";
 import AdmissionManagement from "@/component/admissionManagement/AdmissionManagement";
 
+export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Admission Management | Coaching Center",

@@ -19,13 +19,17 @@ import {
   FaArrowLeft,
   FaBell,
   FaCheck,
+  FaCheckCircle,
   FaChevronDown,
   FaExclamationTriangle,
   FaFilter,
   FaMoneyBillWave,
   FaSearch,
   FaSms,
+  FaSort,
+  FaTimesCircle,
   FaTrash,
+  FaUndoAlt,
   FaUsers,
   FaTimes,
   FaCheckSquare,
@@ -99,11 +103,34 @@ export default function TuitionFeeManagement() {
   const [stats, setStats]               = useState<any>(null);
   const [search, setSearch]             = useState("");
   const [filterClass, setFilterClass]   = useState("");
+  const [filterBatch, setFilterBatch]   = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [sortBy, setSortBy]             = useState<"default" | "paid_first" | "unpaid_first" | "name_asc" | "name_desc">("default");
   const [filterMonth, setFilterMonth]   = useState(curMonth);
   const [filterYear, setFilterYear]     = useState(curYear);
   const [viewMode, setViewMode]         = useState<ViewMode>("list");
   const [selectedRow, setSelectedRow]   = useState<StudentFeeRow | null>(null);
+
+  // ── available classes (loaded once from admissions) ──
+  const [availableClasses, setAvailableClasses] = useState<string[]>([]);
+
+  useEffect(() => {
+    startTransition(async () => {
+      const result = await getAdmissions(1, 5000, "", { status: "active" });
+      if (result.success && result.data) {
+        const all = (Array.isArray(result.data) ? result.data : []) as AdmissionRecord[];
+        const unique = Array.from(new Set(all.map((a) => a.class))).sort((a, b) => {
+          const na = parseInt(a.replace(/\D/g, ""));
+          const nb = parseInt(b.replace(/\D/g, ""));
+          if (!isNaN(na) && !isNaN(nb)) return na - nb;
+          if (!isNaN(na)) return -1;
+          if (!isNaN(nb)) return 1;
+          return a.localeCompare(b);
+        });
+        setAvailableClasses(unique);
+      }
+    });
+  }, []);
 
   // ── bulk selection ──
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -153,20 +180,39 @@ export default function TuitionFeeManagement() {
     };
   });
 
-  // ── filtered rows ──
-  const rows = merged.filter((row) => {
-    if (search) {
-      const q = search.toLowerCase();
-      if (!row.studentName.toLowerCase().includes(q) && !(row.studentId || "").toLowerCase().includes(q)) return false;
-    }
-    if (filterStatus) {
-      const s = row.feeRecord?.status;
-      if (filterStatus === "not_paid") { if (s && s !== "pending") return false; }
-      else if (filterStatus !== "not_paid" && s !== filterStatus)  return false;
-      if (filterStatus !== "not_paid" && !s)                       return false;
-    }
-    return true;
-  });
+  // ── filtered + sorted rows ──
+  const rows = merged
+    .filter((row) => {
+      if (search) {
+        const q = search.toLowerCase();
+        if (!row.studentName.toLowerCase().includes(q) && !(row.studentId || "").toLowerCase().includes(q)) return false;
+      }
+      if (filterBatch) {
+        if (!row.batchName.toLowerCase().includes(filterBatch.toLowerCase())) return false;
+      }
+      if (filterStatus) {
+        const s = row.feeRecord?.status;
+        if (filterStatus === "not_paid") { if (s && s !== "pending") return false; }
+        else if (filterStatus !== "not_paid" && s !== filterStatus)  return false;
+        if (filterStatus !== "not_paid" && !s)                       return false;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === "paid_first") {
+        const aP = a.feeRecord?.status === "paid" ? 0 : 1;
+        const bP = b.feeRecord?.status === "paid" ? 0 : 1;
+        return aP - bP;
+      }
+      if (sortBy === "unpaid_first") {
+        const aP = a.feeRecord?.status === "paid" ? 1 : 0;
+        const bP = b.feeRecord?.status === "paid" ? 1 : 0;
+        return aP - bP;
+      }
+      if (sortBy === "name_asc")  return a.studentName.localeCompare(b.studentName);
+      if (sortBy === "name_desc") return b.studentName.localeCompare(a.studentName);
+      return 0;
+    });
 
   // ── unpaid rows that have a fee record (can receive SMS) ──
   const unpaidWithRecord    = merged.filter(r => r.feeRecord && r.feeRecord.status !== "paid");
@@ -298,6 +344,30 @@ export default function TuitionFeeManagement() {
       const r = await deleteFee(feeId);
       if (r.success) { toast.success(t("Deleted", "মুছে ফেলা হয়েছে")); loadData(); }
       else toast.error(r.error || t("Failed to delete", "মুছতে ব্যর্থ"));
+    });
+  };
+
+  const handleQuickMarkPaid = (row: StudentFeeRow) => {
+    startTransition(async () => {
+      let feeId = row.feeRecord?._id;
+      if (!feeId) {
+        const dueDate = new Date(filterYear, filterMonth - 1, 10).toISOString().split("T")[0];
+        const created = await createFee({ admissionId: row.admissionId, monthlyFee: row.monthlyFee, dueDate, month: filterMonth, year: filterYear });
+        if (!created.success || !created.data) { toast.error(created.error || t("Failed to create fee record", "ফি রেকর্ড তৈরিতে ব্যর্থ")); return; }
+        feeId = (created.data as any)._id;
+      }
+      const result = await updateFee(feeId!, { amountPaid: row.monthlyFee, paymentDate: new Date().toISOString().split("T")[0], paymentMethod: "cash", sendSms: false });
+      if (result.success) { toast.success(t("Marked as paid", "পরিশোধিত হিসেবে চিহ্নিত")); loadData(); }
+      else toast.error(result.error || t("Failed", "ব্যর্থ"));
+    });
+  };
+
+  const handleQuickMarkUnpaid = (feeId: string) => {
+    if (!confirm(t("Remove payment record and mark as unpaid?", "পেমেন্ট রেকর্ড মুছে অপরিশোধিত করবেন?"))) return;
+    startTransition(async () => {
+      const r = await deleteFee(feeId);
+      if (r.success) { toast.success(t("Marked as unpaid", "অপরিশোধিত চিহ্নিত করা হয়েছে")); loadData(); }
+      else toast.error(r.error || t("Failed", "ব্যর্থ"));
     });
   };
 
@@ -498,29 +568,78 @@ export default function TuitionFeeManagement() {
 
             {/* Search & Filter */}
             <div className={`p-6 rounded-xl shadow-md mb-6 ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
-              <div className="flex items-center gap-2 mb-4">
-                <FaFilter className={isDarkMode ? "text-gray-400" : "text-gray-500"} />
-                <h2 className={`text-base font-semibold ${isDarkMode ? "text-gray-100" : "text-gray-900"}`}>
-                  {t("Search & Filter", "অনুসন্ধান ও ফিল্টার")}
-                </h2>
+              <div className="flex items-center justify-between gap-2 mb-4">
+                <div className="flex items-center gap-2">
+                  <FaFilter className={isDarkMode ? "text-gray-400" : "text-gray-500"} />
+                  <h2 className={`text-base font-semibold ${isDarkMode ? "text-gray-100" : "text-gray-900"}`}>
+                    {t("Search & Filter", "অনুসন্ধান ও ফিল্টার")}
+                  </h2>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isDarkMode ? "bg-blue-900/40 text-blue-300" : "bg-blue-50 text-blue-600"}`}>
+                    {mn(filterMonth)} {filterYear}
+                  </span>
+                </div>
+                {(search || filterClass || filterBatch || filterStatus || sortBy !== "default") && (
+                  <button
+                    onClick={() => { setSearch(""); setFilterClass(""); setFilterBatch(""); setFilterStatus(""); setSortBy("default"); }}
+                    className={`text-xs flex items-center gap-1 px-2 py-1 rounded-lg transition-colors ${isDarkMode ? "text-gray-400 hover:text-red-400 hover:bg-red-900/20" : "text-gray-500 hover:text-red-600 hover:bg-red-50"}`}
+                  >
+                    <FaTimes className="text-xs" /> {t("Clear all", "সব মুছুন")}
+                  </button>
+                )}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+
+              {/* Single row — 5 equal columns */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                {/* Search */}
                 <div className="relative">
                   <FaSearch className={`absolute left-3 top-1/2 -translate-y-1/2 text-sm ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} />
                   <input
                     type="text" value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder={t("Student name or ID...", "ছাত্রের নাম বা আইডি...")}
-                    className={`w-full pl-9 pr-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${isDarkMode ? "bg-gray-700 text-white border-gray-600 placeholder-gray-500" : "bg-white text-gray-900 border-gray-300 placeholder-gray-400"}`}
+                    placeholder={t("Name or ID...", "নাম বা আইডি...")}
+                    className={`w-full pl-9 pr-8 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${isDarkMode ? "bg-gray-700 text-white border-gray-600 placeholder-gray-500" : "bg-white text-gray-900 border-gray-300 placeholder-gray-400"}`}
                   />
+                  {search && (
+                    <button onClick={() => setSearch("")} className={`absolute right-2.5 top-1/2 -translate-y-1/2 ${isDarkMode ? "text-gray-500 hover:text-red-400" : "text-gray-400 hover:text-red-500"}`}>
+                      <FaTimesCircle className="text-sm" />
+                    </button>
+                  )}
                 </div>
-                <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)}
-                  className={`w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${isDarkMode ? "bg-gray-700 text-white border-gray-600" : "bg-white text-gray-900 border-gray-300"}`}>
+
+                {/* Class */}
+                <select
+                  value={filterClass}
+                  onChange={(e) => setFilterClass(e.target.value)}
+                  className={`w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${isDarkMode ? "bg-gray-700 text-white border-gray-600" : "bg-white text-gray-900 border-gray-300"}`}
+                >
                   <option value="">{t("All Classes", "সব ক্লাস")}</option>
-                  {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={`Class ${i + 1}`}>{t("Class", "ক্লাস")} {i + 1}</option>)}
+                  {availableClasses.map((cls) => (
+                    <option key={cls} value={cls}>{cls}</option>
+                  ))}
                 </select>
-                <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
-                  className={`w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${isDarkMode ? "bg-gray-700 text-white border-gray-600" : "bg-white text-gray-900 border-gray-300"}`}>
+
+                {/* Batch */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={filterBatch}
+                    onChange={(e) => setFilterBatch(e.target.value)}
+                    placeholder={t("Batch...", "ব্যাচ...")}
+                    className={`w-full px-4 pr-8 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${isDarkMode ? "bg-gray-700 text-white border-gray-600 placeholder-gray-500" : "bg-white text-gray-900 border-gray-300 placeholder-gray-400"}`}
+                  />
+                  {filterBatch && (
+                    <button onClick={() => setFilterBatch("")} className={`absolute right-2.5 top-1/2 -translate-y-1/2 ${isDarkMode ? "text-gray-500 hover:text-red-400" : "text-gray-400 hover:text-red-500"}`}>
+                      <FaTimesCircle className="text-sm" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Status */}
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className={`w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${isDarkMode ? "bg-gray-700 text-white border-gray-600" : "bg-white text-gray-900 border-gray-300"}`}
+                >
                   <option value="">{t("All Status", "সব স্ট্যাটাস")}</option>
                   <option value="paid">{t("Paid", "পরিশোধিত")}</option>
                   <option value="pending">{t("Pending", "বকেয়া")}</option>
@@ -528,7 +647,24 @@ export default function TuitionFeeManagement() {
                   <option value="partial">{t("Partial", "আংশিক")}</option>
                   <option value="not_paid">{t("Not Paid Yet", "পরিশোধ হয়নি")}</option>
                 </select>
+
+                {/* Sort */}
+                <div className="relative">
+                  <FaSort className={`absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} />
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                    className={`w-full pl-9 pr-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${isDarkMode ? "bg-gray-700 text-white border-gray-600" : "bg-white text-gray-900 border-gray-300"}`}
+                  >
+                    <option value="default">{t("Default Order", "ডিফল্ট ক্রম")}</option>
+                    <option value="unpaid_first">{t("Unpaid First", "অপরিশোধিত প্রথমে")}</option>
+                    <option value="paid_first">{t("Paid First", "পরিশোধিত প্রথমে")}</option>
+                    <option value="name_asc">{t("Name A → Z", "নাম A → Z")}</option>
+                    <option value="name_desc">{t("Name Z → A", "নাম Z → A")}</option>
+                  </select>
+                </div>
               </div>
+
               <p className={`text-xs mt-3 ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
                 {rows.length} {t("students", "জন")}
                 {isPending && <span className="ml-2 animate-pulse">{t("Loading...", "লোড হচ্ছে...")}</span>}
@@ -549,25 +685,22 @@ export default function TuitionFeeManagement() {
                             : <FaSquare className="text-base" />}
                         </button>
                       </th>
-                      {[
-                        t("Student", "ছাত্র"),
-                        t("Class / Batch", "ক্লাস"),
-                        t("Monthly Fee", "মাসিক ফি"),
-                        t("Paid", "পরিশোধিত"),
-                        t("Due", "বকেয়া"),
-                        t("Status", "স্ট্যাটাস"),
-                        t("Actions", "কর্ম"),
-                      ].map((h) => (
-                        <th key={h} className={`px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap transition-colors duration-200 ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
-                          {h}
-                        </th>
-                      ))}
+                      {/* each th mirrors the exact padding + alignment of its <td> */}
+                      <th className={`px-6 py-4 text-left   text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>{t("Student",      "ছাত্র")}</th>
+                      <th className={`px-6 py-4 text-left   text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>{t("Class / Batch","ক্লাস")}</th>
+                      <th className={`px-6 py-4 text-right  text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>{t("Monthly Fee",  "মাসিক ফি")}</th>
+                      <th className={`px-6 py-4 text-right  text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>{t("Paid Amt",     "পরিশোধিত")}</th>
+                      <th className={`px-6 py-4 text-right  text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>{t("Due Amt",      "বকেয়া")}</th>
+                      <th className={`px-6 py-4 text-left   text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>{t("Status",       "স্ট্যাটাস")}</th>
+                      <th className={`px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>{t("Mark Paid",    "পেইড")}</th>
+                      <th className={`px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>{t("Mark Unpaid",  "আনপেইড")}</th>
+                      <th className={`px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>{t("Actions",      "কর্ম")}</th>
                     </tr>
                   </thead>
                   <tbody className={`divide-y ${isDarkMode ? "bg-gray-800 divide-gray-700" : "bg-white divide-gray-100"}`}>
                     {rows.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-6 py-14 text-center">
+                        <td colSpan={10} className="px-6 py-14 text-center">
                           <div className="flex flex-col items-center gap-3">
                             <div className={`w-16 h-16 rounded-full flex items-center justify-center ${isDarkMode ? "bg-gray-700" : "bg-gray-100"}`}>
                               <FaUsers className={`text-xl ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} />
@@ -620,13 +753,19 @@ export default function TuitionFeeManagement() {
                               ৳{row.monthlyFee.toLocaleString()}
                             </td>
                             {/* Paid */}
-                            <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium text-right ${isDarkMode ? "text-green-400" : "text-green-600"}`}>
-                              {fee ? `৳${fee.amountPaid.toLocaleString()}` : <span className={isDarkMode ? "text-gray-600" : "text-gray-300"}>—</span>}
+                            <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium text-right ${
+                              fee
+                                ? isDarkMode ? "text-green-400" : "text-green-600"
+                                : isDarkMode ? "text-gray-600"  : "text-gray-300"
+                            }`}>
+                              {fee ? `৳${fee.amountPaid.toLocaleString()}` : "—"}
                             </td>
                             {/* Due */}
                             <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium text-right ${isDarkMode ? "text-red-400" : "text-red-600"}`}>
                               {fee
-                                ? (fee.amountDue > 0 ? `৳${fee.amountDue.toLocaleString()}` : <span className={isDarkMode ? "text-gray-600" : "text-gray-300"}>—</span>)
+                                ? fee.amountDue > 0
+                                  ? `৳${fee.amountDue.toLocaleString()}`
+                                  : "—"
                                 : `৳${row.monthlyFee.toLocaleString()}`}
                             </td>
                             {/* Status */}
@@ -635,17 +774,49 @@ export default function TuitionFeeManagement() {
                                 {badgeLabel}
                               </span>
                             </td>
-                                {/* Actions */}
-                                <td className="px-6 py-4 whitespace-nowrap">
+                                {/* Mark Paid column */}
+                                <td className="px-4 py-4 text-center whitespace-nowrap">
+                                  <button
+                                    onClick={() => handleQuickMarkPaid(row)}
+                                    disabled={isPending || fee?.status === "paid"}
+                                    title={t("Quick Mark Paid", "পরিশোধিত চিহ্নিত করুন")}
+                                    className={`p-2 rounded-lg transition-colors duration-150 ${
+                                      fee?.status === "paid"
+                                        ? isDarkMode ? "text-green-500 bg-green-900/20 cursor-default" : "text-green-400 bg-green-50 cursor-default"
+                                        : isDarkMode ? "text-green-400 hover:text-green-300 hover:bg-green-900/20" : "text-green-600 hover:text-green-700 hover:bg-green-50"
+                                    }`}
+                                  >
+                                    <FaCheckCircle className="text-base" />
+                                  </button>
+                                </td>
+
+                                {/* Mark Unpaid column */}
+                                <td className="px-4 py-4 text-center whitespace-nowrap">
+                                  <button
+                                    onClick={() => fee ? handleQuickMarkUnpaid(fee._id) : undefined}
+                                    disabled={isPending || !fee || fee.status !== "paid"}
+                                    title={t("Mark as Unpaid", "অপরিশোধিত চিহ্নিত করুন")}
+                                    className={`p-2 rounded-lg transition-colors duration-150 ${
+                                      !fee || fee.status !== "paid"
+                                        ? isDarkMode ? "text-gray-600 cursor-default" : "text-gray-300 cursor-default"
+                                        : isDarkMode ? "text-orange-400 hover:text-orange-300 hover:bg-orange-900/20" : "text-orange-500 hover:text-orange-700 hover:bg-orange-50"
+                                    }`}
+                                  >
+                                    <FaUndoAlt className="text-base" />
+                                  </button>
+                                </td>
+
+                                {/* Actions column */}
+                                <td className="px-4 py-4 whitespace-nowrap">
                                   <div className="flex items-center justify-center gap-1">
-                                    {/* Mark Payment */}
+                                    {/* Record Payment (detailed form) */}
                                     <button onClick={() => openPayment(row)}
                                       className={`p-2 rounded-lg transition-colors duration-150 ${isDarkMode ? "text-blue-400 hover:text-blue-300 hover:bg-blue-900/20" : "text-blue-600 hover:text-blue-700 hover:bg-blue-50"}`}
                                       title={t("Record Payment", "পেমেন্ট রেকর্ড")}>
                                       <FaMoneyBillWave className="text-base" />
                                     </button>
 
-                                    {/* Individual SMS — smart: shows most relevant action */}
+                                    {/* Individual SMS */}
                                     {fee && fee.status !== "paid" && (
                                       <button
                                         onClick={() => isLate || fee.status === "overdue"
@@ -667,7 +838,7 @@ export default function TuitionFeeManagement() {
                                       </button>
                                     )}
 
-                                    {/* Payment Confirmation SMS (paid) */}
+                                    {/* Payment Confirmation SMS */}
                                     {fee?.status === "paid" && !fee.paymentSmsSent && (
                                       <button onClick={() => handleSendPaymentSMS(fee._id)} disabled={isPending}
                                         className={`p-2 rounded-lg transition-colors duration-150 disabled:opacity-50 ${isDarkMode ? "text-green-400 hover:text-green-300 hover:bg-green-900/20" : "text-green-600 hover:text-green-700 hover:bg-green-50"}`}

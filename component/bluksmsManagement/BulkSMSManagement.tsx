@@ -11,12 +11,20 @@ import {
 } from "@/app/actions/sms";
 import { useLanguage } from "@/lib/LanguageContext";
 import { useSidebar } from "@/lib/SidebarContext";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import toast from "react-hot-toast";
 import {
-  FaArrowLeft,
+  FaChartBar,
   FaCheckCircle,
-  FaFile,
+  FaChevronLeft,
+  FaChevronRight,
+  FaEnvelope,
+  FaFileAlt,
+  FaGraduationCap,
+  FaHistory,
+  FaLayerGroup,
+  FaListUl,
+  FaMobileAlt,
   FaPaperPlane,
   FaPlus,
   FaSearch,
@@ -58,82 +66,83 @@ interface Admission {
 type ViewMode = "send" | "history" | "stats";
 type SendMode = "single" | "bulk" | "custom" | "students";
 
+const APPROVED_SENDER_ID = "8809617634353";
+
 export default function BulkSMSManagement() {
   const { isDarkMode } = useSidebar();
   const { language } = useLanguage();
   const [isPending, startTransition] = useTransition();
 
-  // View state
   const [viewMode, setViewMode] = useState<ViewMode>("send");
   const [sendMode, setSendMode] = useState<SendMode>("single");
 
-  // Form state
   const [singleForm, setSingleForm] = useState({
     mobileNumber: "",
     message: "",
-    senderId: "Random",
+    senderId: APPROVED_SENDER_ID,
   });
 
   const [bulkForm, setBulkForm] = useState({
     mobileNumbers: "",
     message: "",
-    senderId: "Random",
+    senderId: APPROVED_SENDER_ID,
   });
 
   const [customForm, setCustomForm] = useState<
-    Array<{
-      number: string;
-      message: string;
-    }>
+    Array<{ number: string; message: string }>
   >([{ number: "", message: "" }]);
 
   const [studentsForm, setStudentsForm] = useState({
     message: "",
     class: "",
     batchName: "",
-    senderId: "Random",
+    senderId: APPROVED_SENDER_ID,
   });
 
-  // History state
+  const HISTORY_PAGE_SIZE = 10;
+
   const [smsHistory, setSmsHistory] = useState<SMSRecord[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPagination, setHistoryPagination] = useState<{
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  } | null>(null);
   const [historyFilters, setHistoryFilters] = useState<{
     type?: string;
     status?: string;
     search?: string;
   }>({});
-  const [stats, setStats] = useState<any>(null);
+  const [historySearchInput, setHistorySearchInput] = useState("");
+  const [stats, setStats] = useState<{
+    totalSMS: number;
+    sentSMS: number;
+    failedSMS: number;
+    deliveredSMS: number;
+    totalRecipients: number;
+    totalSent: number;
+    totalFailed: number;
+  } | null>(null);
 
-  // Students data for filtering
-  const [admissions, setAdmissions] = useState<Admission[]>([]);
-  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+  const [allAdmissions, setAllAdmissions] = useState<Admission[]>([]);
+  const [batchSearch, setBatchSearch] = useState("");
+  const [showBatchDropdown, setShowBatchDropdown] = useState(false);
+  const batchDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Load SMS history
-  useEffect(() => {
-    if (viewMode === "history") {
-      loadSMSHistory();
-    }
-  }, [viewMode, historyFilters]);
-
-  // Load stats
-  useEffect(() => {
-    if (viewMode === "stats") {
-      loadStats();
-    }
-  }, [viewMode]);
-
-  // Load students when in students mode
-  useEffect(() => {
-    if (sendMode === "students") {
-      loadAdmissions();
-    }
-  }, [sendMode, studentsForm.class, studentsForm.batchName]);
-
-  const loadSMSHistory = async () => {
+  const loadSMSHistory = (
+    page: number,
+    filters: { type?: string; status?: string; search?: string },
+  ) => {
     startTransition(async () => {
-      const result = await getSMSHistory(1, 100, historyFilters);
+      const result = await getSMSHistory(page, HISTORY_PAGE_SIZE, filters);
       if (result.success && result.data) {
-        const data = Array.isArray(result.data) ? result.data : [];
-        setSmsHistory(data as SMSRecord[]);
+        setSmsHistory(
+          (Array.isArray(result.data) ? result.data : []) as SMSRecord[],
+        );
+        if (result.pagination) setHistoryPagination(result.pagination);
       }
     });
   };
@@ -142,55 +151,122 @@ export default function BulkSMSManagement() {
     startTransition(async () => {
       const result = await getSMSStats();
       if (result.success && result.data) {
-        setStats(result.data);
+        setStats(result.data as typeof stats);
       }
     });
   };
 
   const loadAdmissions = async () => {
     startTransition(async () => {
-      const result = await getAdmissions(1, 1000, "", {
-        class: studentsForm.class || undefined,
-        batch: studentsForm.batchName || undefined,
-        status: "active",
-      });
+      const result = await getAdmissions(1, 2000, "", { status: "active" });
       if (result.success && result.data) {
-        const data = Array.isArray(result.data) ? result.data : [];
-        setAdmissions(data as Admission[]);
+        setAllAdmissions(
+          (Array.isArray(result.data) ? result.data : []) as Admission[],
+        );
       }
     });
   };
 
+  // Derived: unique classes present in admissions data
+  const uniqueClasses = useMemo(() => {
+    const seen = new Set<string>();
+    allAdmissions.forEach((a) => {
+      if (a.class) seen.add(a.class);
+    });
+    return Array.from(seen).sort((a, b) => {
+      const na = parseInt(a.replace(/\D/g, ""), 10);
+      const nb = parseInt(b.replace(/\D/g, ""), 10);
+      return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
+    });
+  }, [allAdmissions]);
+
+  // Derived: unique batches for the selected class (or all if no class selected)
+  const uniqueBatches = useMemo(() => {
+    const pool = studentsForm.class
+      ? allAdmissions.filter((a) => a.class === studentsForm.class)
+      : allAdmissions;
+    const seen = new Set<string>();
+    pool.forEach((a) => {
+      if (a.batchName) seen.add(a.batchName);
+    });
+    return Array.from(seen).sort((a, b) => a.localeCompare(b));
+  }, [allAdmissions, studentsForm.class]);
+
+  // Derived: batches filtered by search input
+  const filteredBatches = useMemo(() => {
+    if (!batchSearch.trim()) return uniqueBatches;
+    return uniqueBatches.filter((b) =>
+      b.toLowerCase().includes(batchSearch.toLowerCase()),
+    );
+  }, [uniqueBatches, batchSearch]);
+
+  // Derived: student count matching current filters (client-side)
+  const filteredStudentCount = useMemo(() => {
+    return allAdmissions.filter((a) => {
+      if (studentsForm.class && a.class !== studentsForm.class) return false;
+      if (studentsForm.batchName && a.batchName !== studentsForm.batchName)
+        return false;
+      return true;
+    }).length;
+  }, [allAdmissions, studentsForm.class, studentsForm.batchName]);
+
+  // Debounce search input → historyFilters.search (reset to page 1 on new search)
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setHistoryPage(1);
+      setHistoryFilters((f) => ({
+        ...f,
+        search: historySearchInput.trim() || undefined,
+      }));
+    }, 400);
+    return () => clearTimeout(id);
+  }, [historySearchInput]);
+
+  useEffect(() => {
+    if (viewMode === "history") loadSMSHistory(historyPage, historyFilters);
+  }, [viewMode, historyFilters, historyPage]); // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (viewMode === "stats") loadStats();
+  }, [viewMode]);
+  useEffect(() => {
+    if (sendMode === "students") loadAdmissions();
+  }, [sendMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Close batch dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (
+        batchDropdownRef.current &&
+        !batchDropdownRef.current.contains(e.target as Node)
+      ) {
+        setShowBatchDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   const handleSendSingle = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!singleForm.mobileNumber || !singleForm.message) {
-      toast.error(
-        language === "bn"
-          ? "মোবাইল নম্বর এবং বার্তা প্রয়োজন"
-          : "Mobile number and message are required"
-      );
-      return;
-    }
-
     startTransition(async () => {
       const result = await sendSingleSMS({
         mobileNumber: singleForm.mobileNumber,
         message: singleForm.message,
         senderId: singleForm.senderId,
       });
-
       if (result.success) {
         toast.success(
           result.message ||
             (language === "bn"
               ? "SMS সফলভাবে পাঠানো হয়েছে"
-              : "SMS sent successfully")
+              : "SMS sent successfully"),
         );
         setSingleForm({ ...singleForm, mobileNumber: "", message: "" });
       } else {
         toast.error(
           result.error ||
-            (language === "bn" ? "SMS পাঠাতে ব্যর্থ" : "Failed to send SMS")
+            (language === "bn" ? "SMS পাঠাতে ব্যর্থ" : "Failed to send SMS"),
         );
       }
     });
@@ -202,29 +278,18 @@ export default function BulkSMSManagement() {
       .split(/[,\n]/)
       .map((n) => n.trim())
       .filter(Boolean);
-
-    if (numbers.length === 0 || !bulkForm.message) {
-      toast.error(
-        language === "bn"
-          ? "মোবাইল নম্বর এবং বার্তা প্রয়োজন"
-          : "Mobile numbers and message are required"
-      );
-      return;
-    }
-
     startTransition(async () => {
       const result = await sendBulkSMS({
         mobileNumbers: numbers,
         message: bulkForm.message,
         senderId: bulkForm.senderId,
       });
-
       if (result.success) {
         toast.success(
           result.message ||
             (language === "bn"
               ? "Bulk SMS সফলভাবে পাঠানো হয়েছে"
-              : "Bulk SMS sent successfully")
+              : "Bulk SMS sent successfully"),
         );
         setBulkForm({ ...bulkForm, mobileNumbers: "", message: "" });
       } else {
@@ -232,7 +297,7 @@ export default function BulkSMSManagement() {
           result.error ||
             (language === "bn"
               ? "Bulk SMS পাঠাতে ব্যর্থ"
-              : "Failed to send bulk SMS")
+              : "Failed to send bulk SMS"),
         );
       }
     });
@@ -241,35 +306,22 @@ export default function BulkSMSManagement() {
   const handleSendCustom = async (e: React.FormEvent) => {
     e.preventDefault();
     const validMessages = customForm.filter(
-      (m) => m.number.trim() && m.message.trim()
+      (m) => m.number.trim() && m.message.trim(),
     );
-
-    if (validMessages.length === 0) {
-      toast.error(
-        language === "bn"
-          ? "কমপক্ষে একটি বার্তা প্রয়োজন"
-          : "At least one message is required"
-      );
-      return;
-    }
-
     startTransition(async () => {
-      const result = await sendBulkSMSCustom({
-        messages: validMessages,
-      });
-
+      const result = await sendBulkSMSCustom({ messages: validMessages });
       if (result.success) {
         toast.success(
           result.message ||
             (language === "bn"
               ? "SMS সফলভাবে পাঠানো হয়েছে"
-              : "SMS sent successfully")
+              : "SMS sent successfully"),
         );
         setCustomForm([{ number: "", message: "" }]);
       } else {
         toast.error(
           result.error ||
-            (language === "bn" ? "SMS পাঠাতে ব্যর্থ" : "Failed to send SMS")
+            (language === "bn" ? "SMS পাঠাতে ব্যর্থ" : "Failed to send SMS"),
         );
       }
     });
@@ -277,13 +329,6 @@ export default function BulkSMSManagement() {
 
   const handleSendToStudents = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!studentsForm.message) {
-      toast.error(
-        language === "bn" ? "বার্তা প্রয়োজন" : "Message is required"
-      );
-      return;
-    }
-
     startTransition(async () => {
       const result = await sendSMSToStudents({
         message: studentsForm.message,
@@ -293,71 +338,89 @@ export default function BulkSMSManagement() {
         },
         senderId: studentsForm.senderId,
       });
-
       if (result.success) {
         toast.success(
           result.message ||
             (language === "bn"
               ? "SMS সফলভাবে পাঠানো হয়েছে"
-              : "SMS sent successfully")
+              : "SMS sent successfully"),
         );
         setStudentsForm({ ...studentsForm, message: "" });
       } else {
         toast.error(
           result.error ||
-            (language === "bn" ? "SMS পাঠাতে ব্যর্থ" : "Failed to send SMS")
+            (language === "bn" ? "SMS পাঠাতে ব্যর্থ" : "Failed to send SMS"),
         );
       }
     });
   };
 
-  const addCustomMessageRow = () => {
+  const addCustomMessageRow = () =>
     setCustomForm([...customForm, { number: "", message: "" }]);
-  };
 
-  const removeCustomMessageRow = (index: number) => {
+  const removeCustomMessageRow = (index: number) =>
     setCustomForm(customForm.filter((_, i) => i !== index));
-  };
 
   const updateCustomMessage = (
     index: number,
     field: "number" | "message",
-    value: string
+    value: string,
   ) => {
     const updated = [...customForm];
     updated[index] = { ...updated[index], [field]: value };
     setCustomForm(updated);
   };
 
+  // ─── Shared class helpers ────────────────────────────────────────────────────
+
+  const cardCls = `rounded-2xl shadow-sm border transition-colors duration-200 ${
+    isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"
+  }`;
+
+  const inputCls = `w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+    isDarkMode
+      ? "border-gray-600 bg-gray-700/60 text-white placeholder-gray-400"
+      : "border-gray-200 bg-gray-50 text-gray-900 placeholder-gray-400"
+  }`;
+
+  const labelCls = `block text-xs font-semibold uppercase tracking-wide mb-1.5 ${
+    isDarkMode ? "text-gray-400" : "text-gray-500"
+  }`;
+
+  const textCls = isDarkMode ? "text-gray-100" : "text-gray-900";
+  const mutedCls = isDarkMode ? "text-gray-400" : "text-gray-500";
+
   const getStatusBadge = (status: string) => {
-    const statusConfig = {
+    const map: Record<
+      string,
+      { bg: string; text: string; icon: React.ElementType }
+    > = {
       sent: {
-        color:
-          "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+        bg: "bg-emerald-100 dark:bg-emerald-900/40",
+        text: "text-emerald-700 dark:text-emerald-300",
+        icon: FaCheckCircle,
+      },
+      delivered: {
+        bg: "bg-blue-100 dark:bg-blue-900/40",
+        text: "text-blue-700 dark:text-blue-300",
         icon: FaCheckCircle,
       },
       failed: {
-        color: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+        bg: "bg-red-100 dark:bg-red-900/40",
+        text: "text-red-700 dark:text-red-300",
         icon: FaTimesCircle,
       },
       pending: {
-        color:
-          "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+        bg: "bg-amber-100 dark:bg-amber-900/40",
+        text: "text-amber-700 dark:text-amber-300",
         icon: FaTimesCircle,
       },
-      delivered: {
-        color: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-        icon: FaCheckCircle,
-      },
     };
-
-    const config =
-      statusConfig[status as keyof typeof statusConfig] || statusConfig.pending;
-    const Icon = config.icon;
-
+    const s = map[status] || map.pending;
+    const Icon = s.icon;
     return (
       <span
-        className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 ${config.color}`}
+        className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full ${s.bg} ${s.text}`}
       >
         <Icon className="w-3 h-3" />
         {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -365,1044 +428,1252 @@ export default function BulkSMSManagement() {
     );
   };
 
-  // Stats View
-  if (viewMode === "stats") {
-    return (
-      <div
-        className={`min-h-screen transition-colors duration-200 ${
-          isDarkMode ? "bg-gray-900" : "bg-gray-50"
-        }`}
-      >
-        <div className="p-6">
-          <div className="mb-6">
-            <button
-              onClick={() => setViewMode("send")}
-              className={`mb-4 flex items-center gap-2 px-4 py-2 rounded-lg transition-colors duration-200 ${
-                isDarkMode
-                  ? "bg-gray-800 hover:bg-gray-700 text-white"
-                  : "bg-white hover:bg-gray-100 text-gray-900"
-              }`}
-            >
-              <FaArrowLeft />
-              {language === "bn" ? "পিছনে" : "Back"}
-            </button>
-            <h1
-              className={`text-3xl font-bold mb-2 transition-colors duration-200 ${
-                isDarkMode ? "text-gray-100" : "text-gray-900"
-              }`}
-            >
-              {language === "bn" ? "SMS পরিসংখ্যান" : "SMS Statistics"}
-            </h1>
-          </div>
+  // ─── Send mode tab config ─────────────────────────────────────────────────────
 
-          {stats && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div
-                className={`p-6 rounded-xl shadow-md transition-colors duration-200 ${
-                  isDarkMode ? "bg-gray-800" : "bg-white"
-                }`}
-              >
-                <div
-                  className={`text-sm mb-2 transition-colors duration-200 ${
-                    isDarkMode ? "text-gray-400" : "text-gray-600"
-                  }`}
-                >
-                  {language === "bn" ? "মোট SMS" : "Total SMS"}
-                </div>
-                <div
-                  className={`text-3xl font-bold transition-colors duration-200 ${
-                    isDarkMode ? "text-gray-100" : "text-gray-900"
-                  }`}
-                >
-                  {stats.totalSMS || 0}
-                </div>
-              </div>
-              <div
-                className={`p-6 rounded-xl shadow-md transition-colors duration-200 ${
-                  isDarkMode ? "bg-gray-800" : "bg-white"
-                }`}
-              >
-                <div
-                  className={`text-sm mb-2 transition-colors duration-200 ${
-                    isDarkMode ? "text-gray-400" : "text-gray-600"
-                  }`}
-                >
-                  {language === "bn" ? "সফল" : "Sent"}
-                </div>
-                <div
-                  className={`text-3xl font-bold text-green-600 transition-colors duration-200`}
-                >
-                  {stats.sentSMS || 0}
-                </div>
-              </div>
-              <div
-                className={`p-6 rounded-xl shadow-md transition-colors duration-200 ${
-                  isDarkMode ? "bg-gray-800" : "bg-white"
-                }`}
-              >
-                <div
-                  className={`text-sm mb-2 transition-colors duration-200 ${
-                    isDarkMode ? "text-gray-400" : "text-gray-600"
-                  }`}
-                >
-                  {language === "bn" ? "ব্যর্থ" : "Failed"}
-                </div>
-                <div
-                  className={`text-3xl font-bold text-red-600 transition-colors duration-200`}
-                >
-                  {stats.failedSMS || 0}
-                </div>
-              </div>
-              <div
-                className={`p-6 rounded-xl shadow-md transition-colors duration-200 ${
-                  isDarkMode ? "bg-gray-800" : "bg-white"
-                }`}
-              >
-                <div
-                  className={`text-sm mb-2 transition-colors duration-200 ${
-                    isDarkMode ? "text-gray-400" : "text-gray-600"
-                  }`}
-                >
-                  {language === "bn" ? "মোট প্রাপক" : "Total Recipients"}
-                </div>
-                <div
-                  className={`text-3xl font-bold transition-colors duration-200 ${
-                    isDarkMode ? "text-gray-100" : "text-gray-900"
-                  }`}
-                >
-                  {stats.totalRecipients || 0}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+  const sendTabs: {
+    key: SendMode;
+    label: { en: string; bn: string };
+    icon: React.ElementType;
+    color: string;
+  }[] = [
+    {
+      key: "single",
+      label: { en: "Single SMS", bn: "একক SMS" },
+      icon: FaMobileAlt,
+      color: "blue",
+    },
+    {
+      key: "bulk",
+      label: { en: "Bulk (Same)", bn: "Bulk (একই)" },
+      icon: FaLayerGroup,
+      color: "violet",
+    },
+    {
+      key: "custom",
+      label: { en: "Bulk (Custom)", bn: "Bulk (ভিন্ন)" },
+      icon: FaListUl,
+      color: "indigo",
+    },
+    {
+      key: "students",
+      label: { en: "To Students", bn: "ছাত্রদের" },
+      icon: FaGraduationCap,
+      color: "teal",
+    },
+  ];
+
+  const sendTabColor: Record<string, string> = {
+    blue: "bg-blue-600 text-white shadow-blue-200",
+    violet: "bg-violet-600 text-white shadow-violet-200",
+    indigo: "bg-indigo-600 text-white shadow-indigo-200",
+    teal: "bg-teal-600 text-white shadow-teal-200",
+  };
+
+  // ─── Submit button ────────────────────────────────────────────────────────────
+
+  const SubmitBtn = ({
+    icon: Icon,
+    label,
+    loadLabel,
+    color = "blue",
+  }: {
+    icon: React.ElementType;
+    label: string;
+    loadLabel: string;
+    color?: string;
+  }) => {
+    const gradients: Record<string, string> = {
+      blue: "bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 shadow-blue-200",
+      violet:
+        "bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-700 hover:to-violet-600 shadow-violet-200",
+      indigo:
+        "bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 shadow-indigo-200",
+      teal: "bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-700 hover:to-teal-600 shadow-teal-200",
+    };
+    return (
+      <button
+        type="submit"
+        disabled={isPending}
+        className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white font-semibold shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${gradients[color] || gradients.blue}`}
+      >
+        <Icon className={`w-4 h-4 ${isPending ? "animate-spin" : ""}`} />
+        {isPending ? loadLabel : label}
+      </button>
     );
-  }
+  };
 
-  // History View
-  if (viewMode === "history") {
+  // ─── Sender ID field (reused) ─────────────────────────────────────────────────
+
+  const SenderIdField = ({
+    value,
+    onChange,
+  }: {
+    value: string;
+    onChange: (v: string) => void;
+  }) => (
+    <div>
+      <label className={labelCls}>Sender ID</label>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={APPROVED_SENDER_ID}
+        className={inputCls}
+      />
+      <p className={`text-xs mt-1 ${mutedCls}`}>
+        {language === "bn"
+          ? "অনুমোদিত সেন্ডার আইডি ব্যবহার করুন"
+          : "Use your approved sender ID"}
+      </p>
+    </div>
+  );
+
+  // ─── Character counter ────────────────────────────────────────────────────────
+
+  const CharCounter = ({ text }: { text: string }) => {
+    const len = text.length;
+    const sms = Math.ceil(len / 160) || 1;
+    const pct = Math.min((len % 160 || (len > 0 ? 160 : 0)) / 160, 1) * 100;
     return (
-      <div
-        className={`min-h-screen transition-colors duration-200 ${
-          isDarkMode ? "bg-gray-900" : "bg-gray-50"
-        }`}
-      >
-        <div className="p-6">
-          <div className="mb-6">
-            <button
-              onClick={() => setViewMode("send")}
-              className={`mb-4 flex items-center gap-2 px-4 py-2 rounded-lg transition-colors duration-200 ${
-                isDarkMode
-                  ? "bg-gray-800 hover:bg-gray-700 text-white"
-                  : "bg-white hover:bg-gray-100 text-gray-900"
-              }`}
-            >
-              <FaArrowLeft />
-              {language === "bn" ? "পিছনে" : "Back"}
-            </button>
-            <h1
-              className={`text-3xl font-bold mb-2 transition-colors duration-200 ${
-                isDarkMode ? "text-gray-100" : "text-gray-900"
-              }`}
-            >
-              {language === "bn" ? "SMS ইতিহাস" : "SMS History"}
-            </h1>
-          </div>
-
-          {/* Filters */}
+      <div className="mt-2 space-y-1">
+        <div className="h-1 rounded-full bg-gray-200 dark:bg-gray-600 overflow-hidden">
           <div
-            className={`p-4 rounded-xl shadow-md mb-6 transition-colors duration-200 ${
-              isDarkMode ? "bg-gray-800" : "bg-white"
-            }`}
-          >
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={historyFilters.search || ""}
-                    onChange={(e) =>
-                      setHistoryFilters({
-                        ...historyFilters,
-                        search: e.target.value,
-                      })
-                    }
-                    placeholder={
-                      language === "bn"
-                        ? "বার্তা, নম্বর..."
-                        : "Search message, number..."
-                    }
-                    className={`w-full px-4 py-2 pl-10 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
-                      isDarkMode
-                        ? "border-gray-600 bg-gray-700 text-white"
-                        : "border-gray-300 bg-white text-gray-900"
-                    }`}
-                  />
-                  <FaSearch
-                    className={`absolute left-3 top-1/2 transform -translate-y-1/2 transition-colors duration-200 ${
-                      isDarkMode ? "text-gray-400" : "text-gray-500"
-                    }`}
-                  />
-                </div>
-              </div>
-              <select
-                value={historyFilters.type || ""}
-                onChange={(e) =>
-                  setHistoryFilters({
-                    ...historyFilters,
-                    type: e.target.value || undefined,
-                  })
-                }
-                className={`px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all ${
-                  isDarkMode
-                    ? "border-gray-600 bg-gray-700 text-white"
-                    : "border-gray-300 bg-white text-gray-900"
-                }`}
-              >
-                <option value="">
-                  {language === "bn" ? "সব ধরন" : "All Types"}
-                </option>
-                <option value="single">
-                  {language === "bn" ? "একক" : "Single"}
-                </option>
-                <option value="bulk">
-                  {language === "bn" ? "বাল্ক" : "Bulk"}
-                </option>
-                <option value="custom">
-                  {language === "bn" ? "কাস্টম" : "Custom"}
-                </option>
-              </select>
-              <select
-                value={historyFilters.status || ""}
-                onChange={(e) =>
-                  setHistoryFilters({
-                    ...historyFilters,
-                    status: e.target.value || undefined,
-                  })
-                }
-                className={`px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all ${
-                  isDarkMode
-                    ? "border-gray-600 bg-gray-700 text-white"
-                    : "border-gray-300 bg-white text-gray-900"
-                }`}
-              >
-                <option value="">
-                  {language === "bn" ? "সব স্ট্যাটাস" : "All Status"}
-                </option>
-                <option value="sent">
-                  {language === "bn" ? "পাঠানো" : "Sent"}
-                </option>
-                <option value="failed">
-                  {language === "bn" ? "ব্যর্থ" : "Failed"}
-                </option>
-                <option value="pending">
-                  {language === "bn" ? "অপেক্ষমান" : "Pending"}
-                </option>
-              </select>
-            </div>
-          </div>
-
-          {/* SMS History List */}
-          {isPending ? (
-            <div className="text-center py-12">
-              <p
-                className={`transition-colors duration-200 ${
-                  isDarkMode ? "text-gray-400" : "text-gray-600"
-                }`}
-              >
-                {language === "bn" ? "লোড হচ্ছে..." : "Loading..."}
-              </p>
-            </div>
-          ) : smsHistory.length === 0 ? (
-            <div
-              className={`text-center py-12 rounded-xl transition-colors duration-200 ${
-                isDarkMode ? "bg-gray-800" : "bg-white"
-              }`}
-            >
-              <FaFile
-                className={`mx-auto text-6xl mb-4 transition-colors duration-200 ${
-                  isDarkMode ? "text-gray-600" : "text-gray-300"
-                }`}
-              />
-              <p
-                className={`text-lg transition-colors duration-200 ${
-                  isDarkMode ? "text-gray-400" : "text-gray-600"
-                }`}
-              >
-                {language === "bn"
-                  ? "কোন SMS ইতিহাস নেই"
-                  : "No SMS history found"}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {smsHistory.map((sms) => (
-                <div
-                  key={sms._id}
-                  className={`p-6 rounded-xl shadow-md transition-colors duration-200 ${
-                    isDarkMode ? "bg-gray-800" : "bg-white"
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3
-                        className={`text-lg font-semibold mb-2 transition-colors duration-200 ${
-                          isDarkMode ? "text-gray-100" : "text-gray-900"
-                        }`}
-                      >
-                        {sms.message.length > 50
-                          ? `${sms.message.substring(0, 50)}...`
-                          : sms.message}
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        {getStatusBadge(sms.status)}
-                        <span
-                          className={`text-xs ${
-                            isDarkMode ? "text-gray-400" : "text-gray-600"
-                          }`}
-                        >
-                          {new Date(sms.createdAt).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div
-                    className={`text-sm mb-2 transition-colors duration-200 ${
-                      isDarkMode ? "text-gray-400" : "text-gray-600"
-                    }`}
-                  >
-                    {language === "bn" ? "মোট প্রাপক" : "Total Recipients"}:{" "}
-                    {sms.totalRecipients} |{" "}
-                    {language === "bn" ? "পাঠানো" : "Sent"}: {sms.sentCount} |{" "}
-                    {language === "bn" ? "ব্যর্থ" : "Failed"}: {sms.failedCount}
-                  </div>
-                  <details
-                    className={`mt-4 ${
-                      isDarkMode ? "text-gray-300" : "text-gray-700"
-                    }`}
-                  >
-                    <summary className="cursor-pointer font-medium mb-2">
-                      {language === "bn"
-                        ? "সম্পূর্ণ বার্তা দেখুন"
-                        : "View full message"}
-                    </summary>
-                    <p
-                      className={`mt-2 p-3 rounded-lg ${
-                        isDarkMode ? "bg-gray-700" : "bg-gray-100"
-                      }`}
-                    >
-                      {sms.message}
-                    </p>
-                  </details>
-                </div>
-              ))}
-            </div>
-          )}
+            className="h-full bg-blue-500 rounded-full transition-all duration-200"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <div className={`flex justify-between text-xs ${mutedCls}`}>
+          <span>
+            {len} {language === "bn" ? "অক্ষর" : "chars"}
+          </span>
+          <span>
+            {sms} SMS {language === "bn" ? "ক্রেডিট" : "credit"}
+            {sms > 1 ? "s" : ""}
+          </span>
         </div>
       </div>
     );
-  }
+  };
 
-  // Send View
+  // ─── View-level tab config ────────────────────────────────────────────────────
+
+  const viewTabs: {
+    key: ViewMode;
+    label: { en: string; bn: string };
+    icon: React.ElementType;
+  }[] = [
+    {
+      key: "send",
+      label: { en: "Send SMS", bn: "SMS পাঠান" },
+      icon: FaPaperPlane,
+    },
+    { key: "history", label: { en: "History", bn: "ইতিহাস" }, icon: FaHistory },
+    {
+      key: "stats",
+      label: { en: "Statistics", bn: "পরিসংখ্যান" },
+      icon: FaChartBar,
+    },
+  ];
+
   return (
     <div
       className={`min-h-screen transition-colors duration-200 ${
-        isDarkMode ? "bg-gray-900" : "bg-gray-50"
+        isDarkMode ? "bg-gray-900" : "bg-slate-50"
       }`}
     >
-      <div className="p-6">
-        <div className="mb-6">
-          <h1
-            className={`text-3xl font-bold mb-2 transition-colors duration-200 ${
-              isDarkMode ? "text-gray-100" : "text-gray-900"
-            }`}
-          >
-            {language === "bn" ? "Bulk SMS ব্যবস্থাপনা" : "Bulk SMS Management"}
-          </h1>
-          <p
-            className={`text-sm transition-colors duration-200 ${
-              isDarkMode ? "text-gray-400" : "text-gray-600"
-            }`}
-          >
-            {language === "bn"
-              ? "SMS পাঠান এবং ইতিহাস দেখুন"
-              : "Send SMS and view history"}
-          </p>
-        </div>
-
-        {/* Mode Tabs */}
-        <div
-          className={`mb-6 rounded-xl shadow-md transition-colors duration-200 ${
-            isDarkMode ? "bg-gray-800" : "bg-white"
-          }`}
-        >
-          <div className="flex border-b border-gray-200 dark:border-gray-700">
-            <button
-              onClick={() => setViewMode("send")}
-              className={`flex-1 px-4 py-3 font-medium transition-colors duration-200 ${
-                viewMode === "send"
-                  ? "border-b-2 border-blue-600 text-blue-600"
-                  : isDarkMode
-                  ? "text-gray-400 hover:text-gray-300"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              {language === "bn" ? "SMS পাঠান" : "Send SMS"}
-            </button>
-            <button
-              onClick={() => setViewMode("history")}
-              className={`flex-1 px-4 py-3 font-medium transition-colors duration-200 ${
-                (viewMode as ViewMode) === "history"
-                  ? "border-b-2 border-blue-600 text-blue-600"
-                  : isDarkMode
-                  ? "text-gray-400 hover:text-gray-300"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              {language === "bn" ? "ইতিহাস" : "History"}
-            </button>
-            <button
-              onClick={() => setViewMode("stats")}
-              className={`flex-1 px-4 py-3 font-medium transition-colors duration-200 ${
-                (viewMode as ViewMode) === "stats"
-                  ? "border-b-2 border-blue-600 text-blue-600"
-                  : isDarkMode
-                  ? "text-gray-400 hover:text-gray-300"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              {language === "bn" ? "পরিসংখ্যান" : "Statistics"}
-            </button>
+      {/* ── Page Header ─────────────────────────────────────────────────── */}
+      <div
+        className={`px-6 pt-8 pb-6 border-b transition-colors duration-200 ${
+          isDarkMode ? "border-gray-700" : "border-gray-200"
+        }`}
+      >
+        <div className="flex items-center gap-4 mb-1">
+          <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br from-blue-600 to-violet-600 shadow-lg shadow-blue-200/40">
+            <FaEnvelope className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className={`text-2xl font-bold leading-tight ${textCls}`}>
+              {language === "bn"
+                ? "Bulk SMS ব্যবস্থাপনা"
+                : "Bulk SMS Management"}
+            </h1>
+            <p className={`text-sm ${mutedCls}`}>
+              {language === "bn"
+                ? "বাল্ক এসএমএস পাঠান ও ইতিহাস পর্যালোচনা করুন"
+                : "Send bulk messages and review delivery history"}
+            </p>
           </div>
         </div>
+      </div>
 
-        {/* ─── SEND VIEW CONTENT ──────────────────────────────────────── */}
-        {viewMode === "send" && <>
-
-        {/* Send Mode Tabs */}
+      <div className="p-6 space-y-6">
+        {/* ── Top-level View Tabs ──────────────────────────────────────────── */}
         <div
-          className={`mb-6 rounded-xl shadow-md transition-colors duration-200 ${
-            isDarkMode ? "bg-gray-800" : "bg-white"
+          className={`inline-flex p-1 rounded-2xl gap-1 ${
+            isDarkMode
+              ? "bg-gray-800"
+              : "bg-white shadow-sm border border-gray-200"
           }`}
         >
-          <div className="flex flex-wrap gap-2 p-4">
-            <button
-              onClick={() => setSendMode("single")}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                sendMode === "single"
-                  ? "bg-blue-600 text-white"
-                  : isDarkMode
-                  ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-              }`}
-            >
-              {language === "bn" ? "একক SMS" : "Single SMS"}
-            </button>
-            <button
-              onClick={() => setSendMode("bulk")}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                sendMode === "bulk"
-                  ? "bg-blue-600 text-white"
-                  : isDarkMode
-                  ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-              }`}
-            >
-              {language === "bn"
-                ? "Bulk SMS (একই বার্তা)"
-                : "Bulk SMS (Same Message)"}
-            </button>
-            <button
-              onClick={() => setSendMode("custom")}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                sendMode === "custom"
-                  ? "bg-blue-600 text-white"
-                  : isDarkMode
-                  ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-              }`}
-            >
-              {language === "bn"
-                ? "Bulk SMS (ভিন্ন বার্তা)"
-                : "Bulk SMS (Different Messages)"}
-            </button>
-            <button
-              onClick={() => setSendMode("students")}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                sendMode === "students"
-                  ? "bg-blue-600 text-white"
-                  : isDarkMode
-                  ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-              }`}
-            >
-              {language === "bn" ? "ছাত্রদের কাছে পাঠান" : "Send to Students"}
-            </button>
-          </div>
-        </div>
-
-        {/* Single SMS Form */}
-        {sendMode === "single" && (
-          <form
-            onSubmit={handleSendSingle}
-            className={`p-6 rounded-xl shadow-md transition-colors duration-200 ${
-              isDarkMode ? "bg-gray-800" : "bg-white"
-            }`}
-          >
-            <h2
-              className={`text-xl font-bold mb-4 transition-colors duration-200 ${
-                isDarkMode ? "text-gray-100" : "text-gray-900"
-              }`}
-            >
-              {language === "bn" ? "একক SMS পাঠান" : "Send Single SMS"}
-            </h2>
-            <div className="space-y-4">
-              <div>
-                <label
-                  className={`block text-sm font-medium mb-2 transition-colors duration-200 ${
-                    isDarkMode ? "text-gray-300" : "text-gray-700"
-                  }`}
-                >
-                  {language === "bn" ? "মোবাইল নম্বর" : "Mobile Number"} *
-                </label>
-                <input
-                  type="text"
-                  value={singleForm.mobileNumber}
-                  onChange={(e) =>
-                    setSingleForm({
-                      ...singleForm,
-                      mobileNumber: e.target.value,
-                    })
-                  }
-                  required
-                  placeholder="017XXXXXXXX"
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all ${
-                    isDarkMode
-                      ? "border-gray-600 bg-gray-700 text-white"
-                      : "border-gray-300 bg-white text-gray-900"
-                  }`}
-                />
-              </div>
-              <div>
-                <label
-                  className={`block text-sm font-medium mb-2 transition-colors duration-200 ${
-                    isDarkMode ? "text-gray-300" : "text-gray-700"
-                  }`}
-                >
-                  {language === "bn" ? "বার্তা" : "Message"} *
-                </label>
-                <textarea
-                  value={singleForm.message}
-                  onChange={(e) =>
-                    setSingleForm({ ...singleForm, message: e.target.value })
-                  }
-                  required
-                  rows={5}
-                  placeholder={
-                    language === "bn"
-                      ? "আপনার বার্তা লিখুন..."
-                      : "Enter your message..."
-                  }
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all ${
-                    isDarkMode
-                      ? "border-gray-600 bg-gray-700 text-white"
-                      : "border-gray-300 bg-white text-gray-900"
-                  }`}
-                />
-                <p
-                  className={`text-xs mt-1 transition-colors duration-200 ${
-                    isDarkMode ? "text-gray-400" : "text-gray-600"
-                  }`}
-                >
-                  {singleForm.message.length}{" "}
-                  {language === "bn" ? "অক্ষর" : "characters"}
-                </p>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label
-                    className={`block text-sm font-medium mb-2 transition-colors duration-200 ${
-                      isDarkMode ? "text-gray-300" : "text-gray-700"
-                    }`}
-                  >
-                    {language === "bn" ? "Sender ID" : "Sender ID"}
-                  </label>
-                  <input
-                    type="text"
-                    value={singleForm.senderId}
-                    onChange={(e) =>
-                      setSingleForm({ ...singleForm, senderId: e.target.value })
-                    }
-                    placeholder="Random"
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all ${
-                      isDarkMode
-                        ? "border-gray-600 bg-gray-700 text-white"
-                        : "border-gray-300 bg-white text-gray-900"
-                    }`}
-                  />
-                </div>
-              </div>
+          {viewTabs.map(({ key, label, icon: Icon }) => {
+            const active = viewMode === key;
+            return (
               <button
-                type="submit"
-                disabled={isPending}
-                className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                <FaPaperPlane />
-                {isPending
-                  ? language === "bn"
-                    ? "পাঠানো হচ্ছে..."
-                    : "Sending..."
-                  : language === "bn"
-                  ? "SMS পাঠান"
-                  : "Send SMS"}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* Bulk SMS Form */}
-        {sendMode === "bulk" && (
-          <form
-            onSubmit={handleSendBulk}
-            className={`p-6 rounded-xl shadow-md transition-colors duration-200 ${
-              isDarkMode ? "bg-gray-800" : "bg-white"
-            }`}
-          >
-            <h2
-              className={`text-xl font-bold mb-4 transition-colors duration-200 ${
-                isDarkMode ? "text-gray-100" : "text-gray-900"
-              }`}
-            >
-              {language === "bn"
-                ? "Bulk SMS পাঠান (একই বার্তা)"
-                : "Send Bulk SMS (Same Message)"}
-            </h2>
-            <div className="space-y-4">
-              <div>
-                <label
-                  className={`block text-sm font-medium mb-2 transition-colors duration-200 ${
-                    isDarkMode ? "text-gray-300" : "text-gray-700"
-                  }`}
-                >
-                  {language === "bn"
-                    ? "মোবাইল নম্বর (কমা বা লাইনে আলাদা করুন)"
-                    : "Mobile Numbers (comma or line separated)"}{" "}
-                  *
-                </label>
-                <textarea
-                  value={bulkForm.mobileNumbers}
-                  onChange={(e) =>
-                    setBulkForm({ ...bulkForm, mobileNumbers: e.target.value })
-                  }
-                  required
-                  rows={6}
-                  placeholder="017XXXXXXXX, 018XXXXXXXX&#10;019XXXXXXXX"
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all font-mono text-sm ${
-                    isDarkMode
-                      ? "border-gray-600 bg-gray-700 text-white"
-                      : "border-gray-300 bg-white text-gray-900"
-                  }`}
-                />
-                <p
-                  className={`text-xs mt-1 transition-colors duration-200 ${
-                    isDarkMode ? "text-gray-400" : "text-gray-600"
-                  }`}
-                >
-                  {
-                    bulkForm.mobileNumbers
-                      .split(/[,\n]/)
-                      .filter((n) => n.trim()).length
-                  }{" "}
-                  {language === "bn" ? "নম্বর" : "numbers"}
-                </p>
-              </div>
-              <div>
-                <label
-                  className={`block text-sm font-medium mb-2 transition-colors duration-200 ${
-                    isDarkMode ? "text-gray-300" : "text-gray-700"
-                  }`}
-                >
-                  {language === "bn" ? "বার্তা" : "Message"} *
-                </label>
-                <textarea
-                  value={bulkForm.message}
-                  onChange={(e) =>
-                    setBulkForm({ ...bulkForm, message: e.target.value })
-                  }
-                  required
-                  rows={5}
-                  placeholder={
-                    language === "bn"
-                      ? "আপনার বার্তা লিখুন..."
-                      : "Enter your message..."
-                  }
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all ${
-                    isDarkMode
-                      ? "border-gray-600 bg-gray-700 text-white"
-                      : "border-gray-300 bg-white text-gray-900"
-                  }`}
-                />
-                <p
-                  className={`text-xs mt-1 transition-colors duration-200 ${
-                    isDarkMode ? "text-gray-400" : "text-gray-600"
-                  }`}
-                >
-                  {bulkForm.message.length}{" "}
-                  {language === "bn" ? "অক্ষর" : "characters"}
-                </p>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label
-                    className={`block text-sm font-medium mb-2 transition-colors duration-200 ${
-                      isDarkMode ? "text-gray-300" : "text-gray-700"
-                    }`}
-                  >
-                    {language === "bn" ? "Sender ID" : "Sender ID"}
-                  </label>
-                  <input
-                    type="text"
-                    value={bulkForm.senderId}
-                    onChange={(e) =>
-                      setBulkForm({ ...bulkForm, senderId: e.target.value })
-                    }
-                    placeholder="Random"
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all ${
-                      isDarkMode
-                        ? "border-gray-600 bg-gray-700 text-white"
-                        : "border-gray-300 bg-white text-gray-900"
-                    }`}
-                  />
-                </div>
-              </div>
-              <button
-                type="submit"
-                disabled={isPending}
-                className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                <FaPaperPlane />
-                {isPending
-                  ? language === "bn"
-                    ? "পাঠানো হচ্ছে..."
-                    : "Sending..."
-                  : language === "bn"
-                  ? "Bulk SMS পাঠান"
-                  : "Send Bulk SMS"}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* Custom Bulk SMS Form */}
-        {sendMode === "custom" && (
-          <form
-            onSubmit={handleSendCustom}
-            className={`p-6 rounded-xl shadow-md transition-colors duration-200 ${
-              isDarkMode ? "bg-gray-800" : "bg-white"
-            }`}
-          >
-            <div className="flex justify-between items-center mb-4">
-              <h2
-                className={`text-xl font-bold transition-colors duration-200 ${
-                  isDarkMode ? "text-gray-100" : "text-gray-900"
+                key={key}
+                onClick={() => setViewMode(key)}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                  active
+                    ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-200/50"
+                    : isDarkMode
+                      ? "text-gray-400 hover:text-gray-200 hover:bg-gray-700"
+                      : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
                 }`}
               >
-                {language === "bn"
-                  ? "Bulk SMS পাঠান (ভিন্ন বার্তা)"
-                  : "Send Bulk SMS (Different Messages)"}
-              </h2>
-              <button
-                type="button"
-                onClick={addCustomMessageRow}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm flex items-center gap-2"
-              >
-                <FaPlus />
-                {language === "bn" ? "যোগ করুন" : "Add Row"}
+                <Icon className="w-3.5 h-3.5" />
+                {language === "bn" ? label.bn : label.en}
               </button>
-            </div>
-            <div className="space-y-4">
-              {customForm.map((msg, index) => (
-                <div
-                  key={index}
-                  className={`p-4 rounded-lg border transition-colors duration-200 ${
-                    isDarkMode
-                      ? "border-gray-600 bg-gray-700"
-                      : "border-gray-300 bg-gray-50"
-                  }`}
-                >
-                  <div className="flex justify-between items-center mb-2">
-                    <span
-                      className={`text-sm font-medium transition-colors duration-200 ${
-                        isDarkMode ? "text-gray-300" : "text-gray-700"
+            );
+          })}
+        </div>
+
+        {/* ══ SEND VIEW ════════════════════════════════════════════════════ */}
+        {viewMode === "send" && (
+          <div className="space-y-5">
+            {/* Send Mode Selector */}
+            <div className={`${cardCls} p-5`}>
+              <p
+                className={`text-xs font-semibold uppercase tracking-widest mb-3 ${mutedCls}`}
+              >
+                {language === "bn"
+                  ? "পাঠানোর ধরন বেছে নিন"
+                  : "Select send type"}
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {sendTabs.map(({ key, label, icon: Icon, color }) => {
+                  const active = sendMode === key;
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setSendMode(key)}
+                      className={`flex flex-col items-center gap-2 px-4 py-4 rounded-xl border-2 text-sm font-medium transition-all duration-200 ${
+                        active
+                          ? `${sendTabColor[color]} border-transparent shadow-lg`
+                          : isDarkMode
+                            ? "border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-200 bg-gray-700/40"
+                            : "border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700 bg-white"
                       }`}
                     >
-                      {language === "bn" ? "বার্তা" : "Message"} {index + 1}
-                    </span>
-                    {customForm.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeCustomMessageRow(index)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <FaTrash />
-                      </button>
-                    )}
+                      <Icon className="w-5 h-5" />
+                      <span className="leading-tight text-center">
+                        {language === "bn" ? label.bn : label.en}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ── Single SMS Form ── */}
+            {sendMode === "single" && (
+              <form onSubmit={handleSendSingle} className={`${cardCls} p-6`}>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
+                    <FaMobileAlt className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label
-                        className={`block text-xs font-medium mb-1 transition-colors duration-200 ${
-                          isDarkMode ? "text-gray-400" : "text-gray-600"
-                        }`}
-                      >
-                        {language === "bn" ? "মোবাইল নম্বর" : "Mobile Number"} *
-                      </label>
-                      <input
-                        type="text"
-                        value={msg.number}
-                        onChange={(e) =>
-                          updateCustomMessage(index, "number", e.target.value)
-                        }
-                        required
-                        placeholder="017XXXXXXXX"
-                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all text-sm ${
-                          isDarkMode
-                            ? "border-gray-600 bg-gray-800 text-white"
-                            : "border-gray-300 bg-white text-gray-900"
-                        }`}
-                      />
-                    </div>
+                  <h2 className={`text-base font-bold ${textCls}`}>
+                    {language === "bn" ? "একক SMS পাঠান" : "Send Single SMS"}
+                  </h2>
+                </div>
+                <div className="grid md:grid-cols-2 gap-5">
+                  <div>
+                    <label className={labelCls}>
+                      {language === "bn" ? "মোবাইল নম্বর" : "Mobile Number"}{" "}
+                      <span className="text-red-500 normal-case text-sm">
+                        *
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      value={singleForm.mobileNumber}
+                      onChange={(e) =>
+                        setSingleForm({
+                          ...singleForm,
+                          mobileNumber: e.target.value,
+                        })
+                      }
+                      required
+                      placeholder="88017XXXXXXXX"
+                      className={inputCls}
+                    />
+                  </div>
+                  <SenderIdField
+                    value={singleForm.senderId}
+                    onChange={(v) =>
+                      setSingleForm({ ...singleForm, senderId: v })
+                    }
+                  />
+                  <div className="md:col-span-2">
+                    <label className={labelCls}>
+                      {language === "bn" ? "বার্তা" : "Message"}{" "}
+                      <span className="text-red-500 normal-case text-sm">
+                        *
+                      </span>
+                    </label>
+                    <textarea
+                      value={singleForm.message}
+                      onChange={(e) =>
+                        setSingleForm({
+                          ...singleForm,
+                          message: e.target.value,
+                        })
+                      }
+                      required
+                      rows={5}
+                      placeholder={
+                        language === "bn"
+                          ? "আপনার বার্তা লিখুন..."
+                          : "Type your message..."
+                      }
+                      className={`${inputCls} resize-none`}
+                    />
+                    <CharCounter text={singleForm.message} />
+                  </div>
+                  <div className="md:col-span-2">
+                    <SubmitBtn
+                      icon={FaPaperPlane}
+                      label={language === "bn" ? "SMS পাঠান" : "Send SMS"}
+                      loadLabel={
+                        language === "bn" ? "পাঠানো হচ্ছে..." : "Sending..."
+                      }
+                      color="blue"
+                    />
+                  </div>
+                </div>
+              </form>
+            )}
+
+            {/* ── Bulk SMS (Same Message) Form ── */}
+            {sendMode === "bulk" && (
+              <form onSubmit={handleSendBulk} className={`${cardCls} p-6`}>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-9 h-9 rounded-xl bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center">
+                    <FaLayerGroup className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                  </div>
+                  <div>
+                    <h2 className={`text-base font-bold ${textCls}`}>
+                      {language === "bn"
+                        ? "Bulk SMS (একই বার্তা)"
+                        : "Bulk SMS — Same Message"}
+                    </h2>
+                    <p className={`text-xs ${mutedCls}`}>
+                      {language === "bn"
+                        ? "কমা বা নতুন লাইনে নম্বর আলাদা করুন"
+                        : "Separate numbers by comma or newline"}
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-5">
+                  <div className="grid md:grid-cols-3 gap-5">
                     <div className="md:col-span-2">
-                      <label
-                        className={`block text-xs font-medium mb-1 transition-colors duration-200 ${
-                          isDarkMode ? "text-gray-400" : "text-gray-600"
-                        }`}
-                      >
-                        {language === "bn" ? "বার্তা" : "Message"} *
+                      <label className={labelCls}>
+                        {language === "bn"
+                          ? "মোবাইল নম্বরসমূহ"
+                          : "Mobile Numbers"}{" "}
+                        <span className="text-red-500 normal-case text-sm">
+                          *
+                        </span>
                       </label>
                       <textarea
-                        value={msg.message}
+                        value={bulkForm.mobileNumbers}
                         onChange={(e) =>
-                          updateCustomMessage(index, "message", e.target.value)
+                          setBulkForm({
+                            ...bulkForm,
+                            mobileNumbers: e.target.value,
+                          })
                         }
                         required
-                        rows={2}
+                        rows={6}
                         placeholder={
-                          language === "bn"
-                            ? "বার্তা লিখুন..."
-                            : "Enter message..."
+                          "88017XXXXXXXX\n88018XXXXXXXX\n88019XXXXXXXX"
                         }
-                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all text-sm ${
-                          isDarkMode
-                            ? "border-gray-600 bg-gray-800 text-white"
-                            : "border-gray-300 bg-white text-gray-900"
-                        }`}
+                        className={`${inputCls} resize-none font-mono`}
                       />
+                      <p className={`text-xs mt-1 font-medium ${mutedCls}`}>
+                        {
+                          bulkForm.mobileNumbers
+                            .split(/[,\n]/)
+                            .filter((n) => n.trim()).length
+                        }{" "}
+                        {language === "bn" ? "টি নম্বর" : "numbers entered"}
+                      </p>
                     </div>
+                    <SenderIdField
+                      value={bulkForm.senderId}
+                      onChange={(v) =>
+                        setBulkForm({ ...bulkForm, senderId: v })
+                      }
+                    />
                   </div>
-                </div>
-              ))}
-              <button
-                type="submit"
-                disabled={isPending}
-                className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                <FaPaperPlane />
-                {isPending
-                  ? language === "bn"
-                    ? "পাঠানো হচ্ছে..."
-                    : "Sending..."
-                  : language === "bn"
-                  ? "Bulk SMS পাঠান"
-                  : "Send Bulk SMS"}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* Send to Students Form */}
-        {sendMode === "students" && (
-          <form
-            onSubmit={handleSendToStudents}
-            className={`p-6 rounded-xl shadow-md transition-colors duration-200 ${
-              isDarkMode ? "bg-gray-800" : "bg-white"
-            }`}
-          >
-            <h2
-              className={`text-xl font-bold mb-4 transition-colors duration-200 ${
-                isDarkMode ? "text-gray-100" : "text-gray-900"
-              }`}
-            >
-              {language === "bn"
-                ? "ছাত্রদের কাছে SMS পাঠান"
-                : "Send SMS to Students"}
-            </h2>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label
-                    className={`block text-sm font-medium mb-2 transition-colors duration-200 ${
-                      isDarkMode ? "text-gray-300" : "text-gray-700"
-                    }`}
-                  >
-                    {language === "bn" ? "শ্রেণি" : "Class"}
-                  </label>
-                  <select
-                    value={studentsForm.class}
-                    onChange={(e) =>
-                      setStudentsForm({
-                        ...studentsForm,
-                        class: e.target.value,
-                      })
+                  <div>
+                    <label className={labelCls}>
+                      {language === "bn" ? "বার্তা" : "Message"}{" "}
+                      <span className="text-red-500 normal-case text-sm">
+                        *
+                      </span>
+                    </label>
+                    <textarea
+                      value={bulkForm.message}
+                      onChange={(e) =>
+                        setBulkForm({ ...bulkForm, message: e.target.value })
+                      }
+                      required
+                      rows={5}
+                      placeholder={
+                        language === "bn"
+                          ? "আপনার বার্তা লিখুন..."
+                          : "Type your message..."
+                      }
+                      className={`${inputCls} resize-none`}
+                    />
+                    <CharCounter text={bulkForm.message} />
+                  </div>
+                  <SubmitBtn
+                    icon={FaPaperPlane}
+                    label={
+                      language === "bn" ? "Bulk SMS পাঠান" : "Send Bulk SMS"
                     }
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all ${
-                      isDarkMode
-                        ? "border-gray-600 bg-gray-700 text-white"
-                        : "border-gray-300 bg-white text-gray-900"
-                    }`}
-                  >
-                    <option value="">
-                      {language === "bn" ? "সব শ্রেণি" : "All Classes"}
-                    </option>
-                    {Array.from({ length: 10 }, (_, i) => (
-                      <option key={i + 1} value={`Class ${i + 1}`}>
-                        {language === "bn" ? "ক্লাস" : "Class"} {i + 1}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label
-                    className={`block text-sm font-medium mb-2 transition-colors duration-200 ${
-                      isDarkMode ? "text-gray-300" : "text-gray-700"
-                    }`}
-                  >
-                    {language === "bn" ? "ব্যাচ" : "Batch"}
-                  </label>
-                  <input
-                    type="text"
-                    value={studentsForm.batchName}
-                    onChange={(e) =>
-                      setStudentsForm({
-                        ...studentsForm,
-                        batchName: e.target.value,
-                      })
+                    loadLabel={
+                      language === "bn" ? "পাঠানো হচ্ছে..." : "Sending..."
                     }
-                    placeholder={language === "bn" ? "ব্যাচ নাম" : "Batch name"}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all ${
-                      isDarkMode
-                        ? "border-gray-600 bg-gray-700 text-white"
-                        : "border-gray-300 bg-white text-gray-900"
-                    }`}
+                    color="violet"
                   />
                 </div>
+              </form>
+            )}
+
+            {/* ── Bulk SMS (Different Messages) Form ── */}
+            {sendMode === "custom" && (
+              <form onSubmit={handleSendCustom} className={`${cardCls} p-6`}>
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center">
+                      <FaListUl className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    <div>
+                      <h2 className={`text-base font-bold ${textCls}`}>
+                        {language === "bn"
+                          ? "Bulk SMS (ভিন্ন বার্তা)"
+                          : "Bulk SMS — Custom Messages"}
+                      </h2>
+                      <p className={`text-xs ${mutedCls}`}>
+                        {customForm.length}{" "}
+                        {language === "bn" ? "টি বার্তা" : "message(s)"}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addCustomMessageRow}
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl transition-colors"
+                  >
+                    <FaPlus className="w-3 h-3" />
+                    {language === "bn" ? "যোগ করুন" : "Add Row"}
+                  </button>
+                </div>
+                <div className="space-y-3 mb-5">
+                  {customForm.map((msg, index) => (
+                    <div
+                      key={index}
+                      className={`rounded-xl border p-4 transition-colors ${
+                        isDarkMode
+                          ? "border-gray-600 bg-gray-700/40"
+                          : "border-gray-200 bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <span
+                          className={`text-xs font-semibold uppercase tracking-wide ${mutedCls}`}
+                        >
+                          #{index + 1}
+                        </span>
+                        {customForm.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeCustomMessageRow(index)}
+                            className="text-red-400 hover:text-red-600 transition-colors p-1"
+                          >
+                            <FaTrash className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid md:grid-cols-3 gap-3">
+                        <div>
+                          <label className={labelCls}>
+                            {language === "bn" ? "নম্বর" : "Number"} *
+                          </label>
+                          <input
+                            type="text"
+                            value={msg.number}
+                            onChange={(e) =>
+                              updateCustomMessage(
+                                index,
+                                "number",
+                                e.target.value,
+                              )
+                            }
+                            required
+                            placeholder="88017XXXXXXXX"
+                            className={inputCls}
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className={labelCls}>
+                            {language === "bn" ? "বার্তা" : "Message"} *
+                          </label>
+                          <textarea
+                            value={msg.message}
+                            onChange={(e) =>
+                              updateCustomMessage(
+                                index,
+                                "message",
+                                e.target.value,
+                              )
+                            }
+                            required
+                            rows={2}
+                            placeholder={
+                              language === "bn"
+                                ? "বার্তা লিখুন..."
+                                : "Enter message..."
+                            }
+                            className={`${inputCls} resize-none`}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <SubmitBtn
+                  icon={FaPaperPlane}
+                  label={language === "bn" ? "সব SMS পাঠান" : "Send All SMS"}
+                  loadLabel={
+                    language === "bn" ? "পাঠানো হচ্ছে..." : "Sending..."
+                  }
+                  color="indigo"
+                />
+              </form>
+            )}
+
+            {/* ── Send to Students Form ── */}
+            {sendMode === "students" && (
+              <form
+                onSubmit={handleSendToStudents}
+                className={`${cardCls} p-6`}
+              >
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-9 h-9 rounded-xl bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center">
+                    <FaGraduationCap className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                  </div>
+                  <div>
+                    <h2 className={`text-base font-bold ${textCls}`}>
+                      {language === "bn"
+                        ? "ছাত্রদের কাছে SMS পাঠান"
+                        : "Send SMS to Students"}
+                    </h2>
+                    <p className={`text-xs ${mutedCls}`}>
+                      {language === "bn"
+                        ? "শ্রেণি বা ব্যাচ অনুযায়ী ফিল্টার করুন"
+                        : "Filter by class or batch"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Loading skeleton while admissions are fetching */}
+                {isPending && allAdmissions.length === 0 ? (
+                  <div className="flex items-center justify-center py-10 gap-3">
+                    <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+                    <span className={`text-sm ${mutedCls}`}>
+                      {language === "bn"
+                        ? "ছাত্রদের তথ্য লোড হচ্ছে..."
+                        : "Loading student data..."}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    <div className="grid md:grid-cols-3 gap-5">
+                      {/* Class — dynamic from admissions */}
+                      <div>
+                        <label className={labelCls}>
+                          {language === "bn" ? "শ্রেণি" : "Class"}
+                          {uniqueClasses.length > 0 && (
+                            <span
+                              className={`ml-1.5 normal-case font-normal ${mutedCls}`}
+                            >
+                              ({uniqueClasses.length})
+                            </span>
+                          )}
+                        </label>
+                        <select
+                          value={studentsForm.class}
+                          onChange={(e) => {
+                            setStudentsForm({
+                              ...studentsForm,
+                              class: e.target.value,
+                              batchName: "",
+                            });
+                            setBatchSearch("");
+                          }}
+                          className={inputCls}
+                        >
+                          <option value="">
+                            {language === "bn"
+                              ? "— সব শ্রেণি —"
+                              : "— All Classes —"}
+                          </option>
+                          {uniqueClasses.map((cls) => (
+                            <option key={cls} value={cls}>
+                              {cls}
+                            </option>
+                          ))}
+                        </select>
+                        {uniqueClasses.length === 0 && !isPending && (
+                          <p className={`text-xs mt-1 ${mutedCls}`}>
+                            {language === "bn"
+                              ? "কোনো শ্রেণি পাওয়া যায়নি"
+                              : "No classes found"}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Batch — searchable dropdown */}
+                      <div ref={batchDropdownRef} className="relative">
+                        <label className={labelCls}>
+                          {language === "bn" ? "ব্যাচ" : "Batch"}
+                          {uniqueBatches.length > 0 && (
+                            <span
+                              className={`ml-1.5 normal-case font-normal ${mutedCls}`}
+                            >
+                              ({uniqueBatches.length})
+                            </span>
+                          )}
+                        </label>
+                        <div className="relative">
+                          <FaSearch
+                            className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none ${mutedCls}`}
+                          />
+                          <input
+                            type="text"
+                            value={studentsForm.batchName || batchSearch}
+                            onFocus={() => {
+                              if (!studentsForm.batchName)
+                                setShowBatchDropdown(true);
+                            }}
+                            onChange={(e) => {
+                              setBatchSearch(e.target.value);
+                              setStudentsForm({
+                                ...studentsForm,
+                                batchName: "",
+                              });
+                              setShowBatchDropdown(true);
+                            }}
+                            placeholder={
+                              language === "bn"
+                                ? "ব্যাচ খুঁজুন..."
+                                : "Search batch..."
+                            }
+                            className={`${inputCls} pl-9 pr-8`}
+                            autoComplete="off"
+                          />
+                          {(studentsForm.batchName || batchSearch) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStudentsForm({
+                                  ...studentsForm,
+                                  batchName: "",
+                                });
+                                setBatchSearch("");
+                                setShowBatchDropdown(false);
+                              }}
+                              className={`absolute right-3 top-1/2 -translate-y-1/2 ${mutedCls} hover:text-red-500 transition-colors`}
+                            >
+                              <FaTimesCircle className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        {showBatchDropdown && (
+                          <div
+                            className={`absolute z-20 mt-1 w-full rounded-xl border shadow-lg max-h-52 overflow-y-auto ${
+                              isDarkMode
+                                ? "bg-gray-800 border-gray-600"
+                                : "bg-white border-gray-200"
+                            }`}
+                          >
+                            {filteredBatches.length === 0 ? (
+                              <div className={`px-4 py-3 text-sm ${mutedCls}`}>
+                                {language === "bn"
+                                  ? "কোনো ব্যাচ পাওয়া যায়নি"
+                                  : "No batches found"}
+                              </div>
+                            ) : (
+                              filteredBatches.map((batch) => (
+                                <button
+                                  key={batch}
+                                  type="button"
+                                  onClick={() => {
+                                    setStudentsForm({
+                                      ...studentsForm,
+                                      batchName: batch,
+                                    });
+                                    setBatchSearch("");
+                                    setShowBatchDropdown(false);
+                                  }}
+                                  className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                                    studentsForm.batchName === batch
+                                      ? "bg-teal-600 text-white"
+                                      : isDarkMode
+                                        ? "text-gray-200 hover:bg-gray-700"
+                                        : "text-gray-800 hover:bg-teal-50"
+                                  }`}
+                                >
+                                  {batch}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <SenderIdField
+                        value={studentsForm.senderId}
+                        onChange={(v) =>
+                          setStudentsForm({ ...studentsForm, senderId: v })
+                        }
+                      />
+                    </div>
+
+                    {/* Matching student count badge */}
+                    <div
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${
+                        filteredStudentCount > 0
+                          ? "bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800"
+                          : isDarkMode
+                            ? "bg-gray-700/40 border-gray-600"
+                            : "bg-gray-50 border-gray-200"
+                      }`}
+                    >
+                      <FaUsers
+                        className={`w-4 h-4 flex-shrink-0 ${
+                          filteredStudentCount > 0
+                            ? "text-teal-600 dark:text-teal-400"
+                            : mutedCls
+                        }`}
+                      />
+                      <p
+                        className={`text-sm font-medium ${
+                          filteredStudentCount > 0
+                            ? "text-teal-700 dark:text-teal-300"
+                            : mutedCls
+                        }`}
+                      >
+                        {filteredStudentCount > 0 ? (
+                          <>
+                            <span className="font-bold">
+                              {filteredStudentCount}
+                            </span>{" "}
+                            {language === "bn"
+                              ? "জন সক্রিয় ছাত্র এই ফিল্টারে পাওয়া গেছে"
+                              : "active students match the selected filters"}
+                          </>
+                        ) : language === "bn" ? (
+                          "কোনো ছাত্র পাওয়া যায়নি"
+                        ) : (
+                          "No students match the selected filters"
+                        )}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className={labelCls}>
+                        {language === "bn" ? "বার্তা" : "Message"}{" "}
+                        <span className="text-red-500 normal-case text-sm">
+                          *
+                        </span>
+                      </label>
+                      <textarea
+                        value={studentsForm.message}
+                        onChange={(e) =>
+                          setStudentsForm({
+                            ...studentsForm,
+                            message: e.target.value,
+                          })
+                        }
+                        required
+                        rows={5}
+                        placeholder={
+                          language === "bn"
+                            ? "যেমন: Coaching Center OTP is 1234"
+                            : "e.g. Your Coaching Center OTP is 1234"
+                        }
+                        className={`${inputCls} resize-none`}
+                      />
+                      <CharCounter text={studentsForm.message} />
+                    </div>
+                    <SubmitBtn
+                      icon={FaUsers}
+                      label={
+                        language === "bn"
+                          ? "ছাত্রদের কাছে পাঠান"
+                          : "Send to Students"
+                      }
+                      loadLabel={
+                        language === "bn" ? "পাঠানো হচ্ছে..." : "Sending..."
+                      }
+                      color="teal"
+                    />
+                  </div>
+                )}
+              </form>
+            )}
+          </div>
+        )}
+
+        {/* ══ HISTORY VIEW ═════════════════════════════════════════════════ */}
+        {viewMode === "history" && (
+          <div className="space-y-5">
+            {/* Filter Bar — 3 equal columns on one line */}
+            <div className={`${cardCls} p-4`}>
+              <div className="grid grid-cols-3 gap-3">
+                {/* Search — col 1 */}
+                <div className="relative">
+                  <FaSearch
+                    className={`absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none ${mutedCls}`}
+                  />
+                  <input
+                    type="text"
+                    value={historySearchInput}
+                    onChange={(e) => setHistorySearchInput(e.target.value)}
+                    placeholder={
+                      language === "bn"
+                        ? "বার্তা বা নম্বর খুঁজুন..."
+                        : "Search message or number..."
+                    }
+                    className={`${inputCls} pl-8 pr-7`}
+                  />
+                  {historySearchInput && (
+                    <button
+                      type="button"
+                      onClick={() => setHistorySearchInput("")}
+                      className={`absolute right-2.5 top-1/2 -translate-y-1/2 ${mutedCls} hover:text-red-500 transition-colors`}
+                    >
+                      <FaTimesCircle className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Type filter — col 2 */}
+                <select
+                  value={historyFilters.type || ""}
+                  onChange={(e) => {
+                    setHistoryPage(1);
+                    setHistoryFilters({
+                      ...historyFilters,
+                      type: e.target.value || undefined,
+                    });
+                  }}
+                  className={inputCls}
+                >
+                  <option value="">
+                    {language === "bn" ? "সব ধরন" : "All Types"}
+                  </option>
+                  <option value="single">
+                    {language === "bn" ? "একক" : "Single"}
+                  </option>
+                  <option value="bulk">
+                    {language === "bn" ? "বাল্ক" : "Bulk"}
+                  </option>
+                  <option value="custom">
+                    {language === "bn" ? "কাস্টম" : "Custom"}
+                  </option>
+                </select>
+
+                {/* Status filter — col 3 */}
+                <select
+                  value={historyFilters.status || ""}
+                  onChange={(e) => {
+                    setHistoryPage(1);
+                    setHistoryFilters({
+                      ...historyFilters,
+                      status: e.target.value || undefined,
+                    });
+                  }}
+                  className={inputCls}
+                >
+                  <option value="">
+                    {language === "bn" ? "সব স্ট্যাটাস" : "All Status"}
+                  </option>
+                  <option value="sent">
+                    {language === "bn" ? "পাঠানো" : "Sent"}
+                  </option>
+                  <option value="failed">
+                    {language === "bn" ? "ব্যর্থ" : "Failed"}
+                  </option>
+                  <option value="pending">
+                    {language === "bn" ? "অপেক্ষমান" : "Pending"}
+                  </option>
+                </select>
               </div>
-              {admissions.length > 0 && (
+            </div>
+
+            {isPending ? (
+              <div className={`${cardCls} py-16 text-center`}>
+                <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                <p className={mutedCls}>
+                  {language === "bn" ? "লোড হচ্ছে..." : "Loading..."}
+                </p>
+              </div>
+            ) : smsHistory.length === 0 ? (
+              <div className={`${cardCls} py-20 text-center`}>
                 <div
-                  className={`p-4 rounded-lg transition-colors duration-200 ${
+                  className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 ${
                     isDarkMode ? "bg-gray-700" : "bg-gray-100"
                   }`}
                 >
-                  <p
-                    className={`text-sm mb-2 transition-colors duration-200 ${
-                      isDarkMode ? "text-gray-300" : "text-gray-700"
-                    }`}
-                  >
-                    {language === "bn"
-                      ? "নির্বাচিত ফিল্টারে"
-                      : "Selected filters"}
-                    : {admissions.length}{" "}
-                    {language === "bn"
-                      ? "জন ছাত্র পাওয়া গেছে"
-                      : "students found"}
-                  </p>
-                </div>
-              )}
-              <div>
-                <label
-                  className={`block text-sm font-medium mb-2 transition-colors duration-200 ${
-                    isDarkMode ? "text-gray-300" : "text-gray-700"
-                  }`}
-                >
-                  {language === "bn" ? "বার্তা" : "Message"} *
-                </label>
-                <textarea
-                  value={studentsForm.message}
-                  onChange={(e) =>
-                    setStudentsForm({
-                      ...studentsForm,
-                      message: e.target.value,
-                    })
-                  }
-                  required
-                  rows={5}
-                  placeholder={
-                    language === "bn"
-                      ? "আপনার বার্তা লিখুন..."
-                      : "Enter your message..."
-                  }
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all ${
-                    isDarkMode
-                      ? "border-gray-600 bg-gray-700 text-white"
-                      : "border-gray-300 bg-white text-gray-900"
-                  }`}
-                />
-                <p
-                  className={`text-xs mt-1 transition-colors duration-200 ${
-                    isDarkMode ? "text-gray-400" : "text-gray-600"
-                  }`}
-                >
-                  {studentsForm.message.length}{" "}
-                  {language === "bn" ? "অক্ষর" : "characters"}
-                </p>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label
-                    className={`block text-sm font-medium mb-2 transition-colors duration-200 ${
-                      isDarkMode ? "text-gray-300" : "text-gray-700"
-                    }`}
-                  >
-                    {language === "bn" ? "Sender ID" : "Sender ID"}
-                  </label>
-                  <input
-                    type="text"
-                    value={studentsForm.senderId}
-                    onChange={(e) =>
-                      setStudentsForm({
-                        ...studentsForm,
-                        senderId: e.target.value,
-                      })
-                    }
-                    placeholder="Random"
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all ${
-                      isDarkMode
-                        ? "border-gray-600 bg-gray-700 text-white"
-                        : "border-gray-300 bg-white text-gray-900"
-                    }`}
+                  <FaFileAlt
+                    className={`w-7 h-7 ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}
                   />
                 </div>
+                <p className={`font-semibold ${textCls}`}>
+                  {language === "bn"
+                    ? "কোনো SMS ইতিহাস নেই"
+                    : "No SMS history found"}
+                </p>
+                <p className={`text-sm mt-1 ${mutedCls}`}>
+                  {historySearchInput ||
+                  historyFilters.type ||
+                  historyFilters.status
+                    ? language === "bn"
+                      ? "ফিল্টার পরিবর্তন করুন"
+                      : "Try changing the filters"
+                    : language === "bn"
+                      ? "নতুন SMS পাঠালে এখানে দেখা যাবে"
+                      : "Sent messages will appear here"}
+                </p>
               </div>
-              <button
-                type="submit"
-                disabled={isPending}
-                className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                <FaUsers />
-                {isPending
-                  ? language === "bn"
-                    ? "পাঠানো হচ্ছে..."
-                    : "Sending..."
-                  : language === "bn"
-                  ? "ছাত্রদের কাছে পাঠান"
-                  : "Send to Students"}
-              </button>
-            </div>
-          </form>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  {smsHistory.map((sms) => (
+                    <div key={sms._id} className={`${cardCls} overflow-hidden`}>
+                      <div
+                        className={`h-1 w-full ${
+                          sms.status === "sent" || sms.status === "delivered"
+                            ? "bg-emerald-500"
+                            : sms.status === "failed"
+                              ? "bg-red-500"
+                              : "bg-amber-400"
+                        }`}
+                      />
+                      <div className="p-5">
+                        <div className="flex items-start justify-between gap-4 mb-3">
+                          <p
+                            className={`font-semibold text-sm leading-snug flex-1 ${textCls}`}
+                          >
+                            {sms.message.length > 80
+                              ? `${sms.message.substring(0, 80)}…`
+                              : sms.message}
+                          </p>
+                          {getStatusBadge(sms.status)}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3">
+                          <span className={`text-xs ${mutedCls}`}>
+                            {new Date(sms.createdAt).toLocaleString()}
+                          </span>
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                              isDarkMode
+                                ? "bg-gray-700 text-gray-300"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {sms.type.charAt(0).toUpperCase() +
+                              sms.type.slice(1)}
+                          </span>
+                        </div>
+                        <div
+                          className={`flex gap-4 text-xs font-medium py-2.5 px-3 rounded-xl ${
+                            isDarkMode ? "bg-gray-700/60" : "bg-gray-50"
+                          }`}
+                        >
+                          <span className={mutedCls}>
+                            {language === "bn" ? "মোট" : "Total"}:{" "}
+                            <strong className={textCls}>
+                              {sms.totalRecipients}
+                            </strong>
+                          </span>
+                          <span className="text-emerald-600 dark:text-emerald-400">
+                            {language === "bn" ? "সফল" : "Sent"}:{" "}
+                            <strong>{sms.sentCount}</strong>
+                          </span>
+                          <span className="text-red-500">
+                            {language === "bn" ? "ব্যর্থ" : "Failed"}:{" "}
+                            <strong>{sms.failedCount}</strong>
+                          </span>
+                        </div>
+                        {sms.message.length > 80 && (
+                          <details className="mt-3">
+                            <summary
+                              className={`cursor-pointer text-xs font-medium select-none ${
+                                isDarkMode
+                                  ? "text-blue-400 hover:text-blue-300"
+                                  : "text-blue-600 hover:text-blue-700"
+                              }`}
+                            >
+                              {language === "bn"
+                                ? "সম্পূর্ণ বার্তা দেখুন"
+                                : "View full message"}
+                            </summary>
+                            <p
+                              className={`mt-2 text-sm p-3 rounded-xl leading-relaxed ${
+                                isDarkMode
+                                  ? "bg-gray-700/60 text-gray-300"
+                                  : "bg-gray-50 text-gray-700"
+                              }`}
+                            >
+                              {sms.message}
+                            </p>
+                          </details>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── Pagination ── */}
+                {historyPagination && historyPagination.totalPages > 1 && (
+                  <div className={`${cardCls} p-4`}>
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      {/* Page info */}
+                      <span className={`text-xs font-medium ${mutedCls}`}>
+                        {language === "bn"
+                          ? `পৃষ্ঠা ${historyPagination.page} / ${historyPagination.totalPages}`
+                          : `Page ${historyPagination.page} of ${historyPagination.totalPages}`}
+                      </span>
+
+                      {/* Page buttons */}
+                      <div className="flex items-center gap-1.5">
+                        {/* Prev */}
+                        <button
+                          type="button"
+                          disabled={!historyPagination.hasPrev || isPending}
+                          onClick={() => setHistoryPage((p) => p - 1)}
+                          className={`flex items-center justify-center w-8 h-8 rounded-lg border text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                            isDarkMode
+                              ? "border-gray-600 text-gray-300 hover:bg-gray-700"
+                              : "border-gray-200 text-gray-600 hover:bg-gray-100"
+                          }`}
+                        >
+                          <FaChevronLeft className="w-3 h-3" />
+                        </button>
+
+                        {/* Page numbers */}
+                        {Array.from(
+                          { length: historyPagination.totalPages },
+                          (_, i) => i + 1,
+                        )
+                          .filter((p) => {
+                            const cur = historyPagination.page;
+                            return (
+                              p === 1 ||
+                              p === historyPagination.totalPages ||
+                              Math.abs(p - cur) <= 1
+                            );
+                          })
+                          .reduce<(number | "…")[]>((acc, p, idx, arr) => {
+                            if (
+                              idx > 0 &&
+                              (p as number) - (arr[idx - 1] as number) > 1
+                            )
+                              acc.push("…");
+                            acc.push(p);
+                            return acc;
+                          }, [])
+                          .map((p, idx) =>
+                            p === "…" ? (
+                              <span
+                                key={`ellipsis-${idx}`}
+                                className={`px-1 text-sm ${mutedCls}`}
+                              >
+                                …
+                              </span>
+                            ) : (
+                              <button
+                                key={p}
+                                type="button"
+                                disabled={isPending}
+                                onClick={() => setHistoryPage(p as number)}
+                                className={`flex items-center justify-center w-8 h-8 rounded-lg border text-sm font-medium transition-colors disabled:cursor-not-allowed ${
+                                  historyPagination.page === p
+                                    ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                                    : isDarkMode
+                                      ? "border-gray-600 text-gray-300 hover:bg-gray-700"
+                                      : "border-gray-200 text-gray-600 hover:bg-gray-100"
+                                }`}
+                              >
+                                {p}
+                              </button>
+                            ),
+                          )}
+
+                        {/* Next */}
+                        <button
+                          type="button"
+                          disabled={!historyPagination.hasNext || isPending}
+                          onClick={() => setHistoryPage((p) => p + 1)}
+                          className={`flex items-center justify-center w-8 h-8 rounded-lg border text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                            isDarkMode
+                              ? "border-gray-600 text-gray-300 hover:bg-gray-700"
+                              : "border-gray-200 text-gray-600 hover:bg-gray-100"
+                          }`}
+                        >
+                          <FaChevronRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         )}
 
-        </> /* end viewMode === "send" */}
+        {/* ══ STATS VIEW ═══════════════════════════════════════════════════ */}
+        {viewMode === "stats" && (
+          <div className="space-y-5">
+            {isPending && !stats ? (
+              <div className={`${cardCls} py-16 text-center`}>
+                <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                <p className={mutedCls}>
+                  {language === "bn" ? "লোড হচ্ছে..." : "Loading..."}
+                </p>
+              </div>
+            ) : stats ? (
+              <>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[
+                    {
+                      label: { en: "Total SMS", bn: "মোট SMS" },
+                      value: stats.totalSMS,
+                      icon: FaEnvelope,
+                      bg: "bg-blue-50 dark:bg-blue-900/20",
+                      iconBg: "bg-blue-600",
+                      text: "text-blue-700 dark:text-blue-300",
+                    },
+                    {
+                      label: { en: "Sent", bn: "সফল" },
+                      value: stats.sentSMS,
+                      icon: FaCheckCircle,
+                      bg: "bg-emerald-50 dark:bg-emerald-900/20",
+                      iconBg: "bg-emerald-600",
+                      text: "text-emerald-700 dark:text-emerald-300",
+                    },
+                    {
+                      label: { en: "Failed", bn: "ব্যর্থ" },
+                      value: stats.failedSMS,
+                      icon: FaTimesCircle,
+                      bg: "bg-red-50 dark:bg-red-900/20",
+                      iconBg: "bg-red-600",
+                      text: "text-red-700 dark:text-red-300",
+                    },
+                    {
+                      label: { en: "Total Recipients", bn: "মোট প্রাপক" },
+                      value: stats.totalRecipients,
+                      icon: FaUsers,
+                      bg: "bg-violet-50 dark:bg-violet-900/20",
+                      iconBg: "bg-violet-600",
+                      text: "text-violet-700 dark:text-violet-300",
+                    },
+                  ].map(({ label, value, icon: Icon, bg, iconBg, text }) => (
+                    <div
+                      key={label.en}
+                      className={`rounded-2xl border p-5 transition-colors duration-200 ${bg} ${
+                        isDarkMode ? "border-gray-700" : "border-gray-200"
+                      }`}
+                    >
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 ${iconBg}`}
+                      >
+                        <Icon className="w-4.5 h-4.5 text-white" />
+                      </div>
+                      <div className={`text-3xl font-bold mb-1 ${text}`}>
+                        {value?.toLocaleString() ?? 0}
+                      </div>
+                      <div className={`text-sm font-medium ${mutedCls}`}>
+                        {language === "bn" ? label.bn : label.en}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Delivery rate bar */}
+                <div className={`${cardCls} p-6`}>
+                  <h3 className={`text-sm font-bold mb-4 ${textCls}`}>
+                    {language === "bn" ? "ডেলিভারি রেট" : "Delivery Rate"}
+                  </h3>
+                  <div className="space-y-3">
+                    {[
+                      {
+                        label: { en: "Sent", bn: "সফল" },
+                        value: stats.sentSMS,
+                        total: stats.totalSMS,
+                        color: "bg-emerald-500",
+                      },
+                      {
+                        label: { en: "Failed", bn: "ব্যর্থ" },
+                        value: stats.failedSMS,
+                        total: stats.totalSMS,
+                        color: "bg-red-500",
+                      },
+                    ].map(({ label, value, total, color }) => {
+                      const pct =
+                        total > 0 ? Math.round((value / total) * 100) : 0;
+                      return (
+                        <div key={label.en}>
+                          <div className="flex justify-between text-xs font-medium mb-1.5">
+                            <span className={mutedCls}>
+                              {language === "bn" ? label.bn : label.en}
+                            </span>
+                            <span className={textCls}>{pct}%</span>
+                          </div>
+                          <div
+                            className={`h-2 rounded-full overflow-hidden ${
+                              isDarkMode ? "bg-gray-700" : "bg-gray-100"
+                            }`}
+                          >
+                            <div
+                              className={`h-full rounded-full ${color} transition-all duration-700`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className={`${cardCls} py-16 text-center`}>
+                <FaChartBar className={`w-10 h-10 mx-auto mb-3 ${mutedCls}`} />
+                <p className={mutedCls}>
+                  {language === "bn"
+                    ? "কোনো পরিসংখ্যান পাওয়া যায়নি"
+                    : "No statistics available"}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

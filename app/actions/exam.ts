@@ -480,3 +480,34 @@ export async function getExamStats(examId: string): Promise<ExamResponse> {
     };
   }
 }
+
+// Send custom alert SMS to all students of an exam's class/batch
+export async function sendExamAlertSMS(
+  examId: string,
+  message: string
+): Promise<ExamResponse> {
+  try {
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${API_URL}/api/exam/${examId}/alert`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ message }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return { success: false, error: data.message || "Failed to send alert" };
+    }
+
+    return {
+      success: true,
+      message: data.message || "Alert sent successfully",
+      data: data.data,
+    };
+  } catch (error) {
+    console.error("Send exam alert SMS error:", error);
+    return { success: false, error: "An error occurred while sending alert" };
+  }
+}

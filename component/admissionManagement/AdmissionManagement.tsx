@@ -4,6 +4,7 @@ import {
   deleteAdmission,
   getAdmissions,
   getBatchList,
+  getClassList,
 } from "@/app/actions/admission";
 import { useLanguage } from "@/lib/LanguageContext";
 import { useSidebar } from "@/lib/SidebarContext";
@@ -22,16 +23,6 @@ import {
   FaUserPlus,
 } from "react-icons/fa";
 
-const PREDEFINED_CLASSES = [
-  "Class 5",
-  "Class 6",
-  "Class 7",
-  "Class 8",
-  "Class 9",
-  "Class 10",
-  "Class 11",
-  "Class 12",
-];
 
 interface Admission {
   _id: string;
@@ -87,21 +78,49 @@ export default function AdmissionManagement({
   const [isPending, startTransition] = useTransition();
 
   const [admissions, setAdmissions] = useState<Admission[]>(initialData);
+  const [prevInitialData, setPrevInitialData] = useState(initialData);
   const [pagination, setPagination] = useState(initialPagination);
+  const [prevInitialPagination, setPrevInitialPagination] = useState(initialPagination);
   const [search, setSearch] = useState(initialSearch);
   const [filters, setFilters] = useState(initialFilters);
   const [batches, setBatches] = useState<string[]>([]);
+  const [classes, setClasses] = useState<string[]>([]);
 
-  // Fetch batch list on mount
+  // Sync state when server re-passes new data after URL/searchParams change
+  // (React recommended "derived state during render" pattern)
+  if (prevInitialData !== initialData) {
+    setPrevInitialData(initialData);
+    setAdmissions(initialData);
+  }
+  if (prevInitialPagination !== initialPagination) {
+    setPrevInitialPagination(initialPagination);
+    setPagination(initialPagination);
+  }
+
+  // Fetch filter lists on mount
   useEffect(() => {
-    const fetchBatches = async () => {
-      const result = await getBatchList();
-      if (result.success && result.data) {
-        setBatches(result.data);
-      }
+    const fetchLists = async () => {
+      const [batchResult, classResult] = await Promise.all([
+        getBatchList(),
+        getClassList(),
+      ]);
+      if (batchResult.success && batchResult.data) setBatches(batchResult.data);
+      if (classResult.success && classResult.data) setClasses(classResult.data);
     };
-    fetchBatches();
+    fetchLists();
   }, []);
+
+  const updateURL = (params: Record<string, string>) => {
+    const current = new URLSearchParams(searchParams.toString());
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) {
+        current.set(key, value);
+      } else {
+        current.delete(key);
+      }
+    });
+    router.push(`/admission?${current.toString()}`);
+  };
 
   // Debounced search handler
   const { debouncedCallback: debouncedSearch } = useDebounce(
@@ -120,18 +139,6 @@ export default function AdmissionManagement({
     const newFilters = { ...filters, [key]: value };
     setFilters(newFilters);
     updateURL({ ...newFilters, page: "1" });
-  };
-
-  const updateURL = (params: Record<string, string>) => {
-    const current = new URLSearchParams(searchParams.toString());
-    Object.entries(params).forEach(([key, value]) => {
-      if (value) {
-        current.set(key, value);
-      } else {
-        current.delete(key);
-      }
-    });
-    router.push(`/admission?${current.toString()}`);
   };
 
   const refreshData = useCallback(async () => {
@@ -298,7 +305,7 @@ export default function AdmissionManagement({
                 <option value="">
                   {getTranslation("allClasses", language) || "All Classes"}
                 </option>
-                {PREDEFINED_CLASSES.map((cls) => (
+                {classes.map((cls) => (
                   <option key={cls} value={cls}>
                     {cls}
                   </option>

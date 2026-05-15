@@ -1,7 +1,7 @@
-import UserManagement from "@/component/settingsManagement/UserManagement";
+import SettingsDetilas from "@/component/settingsManagement/SettingsDetilas";
 
 const page = () => {
-  return <UserManagement />;
+  return <SettingsDetilas />;
 };
 
 export default page;

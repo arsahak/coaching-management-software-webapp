@@ -2,6 +2,7 @@
 
 import { auth } from "@/auth";
 
+// Server-side only — do not use NEXT_PUBLIC_ for backend calls
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export interface SMSData {
@@ -34,18 +35,52 @@ export interface SMSResponse {
   };
 }
 
-// Helper function to get auth headers
+// ─── Auth headers ────────────────────────────────────────────────────────────
+
 async function getAuthHeaders(): Promise<HeadersInit> {
   const session = await auth();
   const token = session?.accessToken;
-
   return {
     "Content-Type": "application/json",
     ...(token && { Authorization: `Bearer ${token}` }),
   };
 }
 
-// Send single SMS
+// ─── Shared response parser ───────────────────────────────────────────────────
+// The backend always returns HTTP 200. We must read data.success from the body.
+
+async function parseResponse(
+  response: Response,
+  fallbackError: string
+): Promise<{ ok: boolean; data: Record<string, unknown> }> {
+  const contentType = response.headers.get("content-type");
+
+  if (!contentType?.includes("application/json")) {
+    const text = await response.text();
+    console.error("Non-JSON response:", text.substring(0, 200));
+    return {
+      ok: false,
+      data: { message: `API endpoint not found (status ${response.status})` },
+    };
+  }
+
+  const data = await response.json();
+
+  // HTTP error (4xx / 5xx)
+  if (!response.ok) {
+    return { ok: false, data };
+  }
+
+  // HTTP 200 but gateway/backend reported failure
+  if (data.success === false) {
+    return { ok: false, data };
+  }
+
+  return { ok: true, data };
+}
+
+// ─── Send single SMS ──────────────────────────────────────────────────────────
+
 export async function sendSingleSMS(smsData: {
   mobileNumber: string;
   message: string;
@@ -54,54 +89,40 @@ export async function sendSingleSMS(smsData: {
 }): Promise<SMSResponse> {
   try {
     const headers = await getAuthHeaders();
-
     const response = await fetch(`${API_URL}/api/sms/send`, {
       method: "POST",
       headers,
       body: JSON.stringify(smsData),
     });
 
-    // Check if response is JSON before parsing
-    const contentType = response.headers.get("content-type");
-    let data;
+    const { ok, data } = await parseResponse(response, "Failed to send SMS");
 
-    if (contentType && contentType.includes("application/json")) {
-      data = await response.json();
-    } else {
-      const text = await response.text();
-      console.error("Non-JSON response:", text.substring(0, 200));
+    if (!ok) {
       return {
         success: false,
-        error: `API endpoint not found. Status: ${response.status}. Please ensure the backend SMS API is implemented.`,
-      };
-    }
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: data.message || "Failed to send SMS",
+        error: (data.message as string) || "Failed to send SMS",
+        code: data.code as number | undefined,
       };
     }
 
     return {
       success: true,
-      message: data.message || "SMS sent successfully",
+      message: (data.message as string) || "SMS sent successfully",
       data: data.data,
-      code: data.code,
+      code: data.code as number | undefined,
     };
   } catch (error) {
     console.error("Send single SMS error:", error);
     return {
       success: false,
       error:
-        error instanceof Error
-          ? error.message
-          : "An error occurred while sending SMS",
+        error instanceof Error ? error.message : "An error occurred while sending SMS",
     };
   }
 }
 
-// Send bulk SMS (same message to multiple numbers)
+// ─── Send bulk SMS (same message) ─────────────────────────────────────────────
+
 export async function sendBulkSMS(smsData: {
   mobileNumbers: string[];
   message: string;
@@ -110,53 +131,40 @@ export async function sendBulkSMS(smsData: {
 }): Promise<SMSResponse> {
   try {
     const headers = await getAuthHeaders();
-
     const response = await fetch(`${API_URL}/api/sms/bulk`, {
       method: "POST",
       headers,
       body: JSON.stringify(smsData),
     });
 
-    const contentType = response.headers.get("content-type");
-    let data;
+    const { ok, data } = await parseResponse(response, "Failed to send bulk SMS");
 
-    if (contentType && contentType.includes("application/json")) {
-      data = await response.json();
-    } else {
-      const text = await response.text();
-      console.error("Non-JSON response:", text.substring(0, 200));
+    if (!ok) {
       return {
         success: false,
-        error: `API endpoint not found. Status: ${response.status}. Please ensure the backend SMS API is implemented.`,
-      };
-    }
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: data.message || "Failed to send bulk SMS",
+        error: (data.message as string) || "Failed to send bulk SMS",
+        code: data.code as number | undefined,
       };
     }
 
     return {
       success: true,
-      message: data.message || "Bulk SMS sent successfully",
+      message: (data.message as string) || "Bulk SMS sent successfully",
       data: data.data,
-      code: data.code,
+      code: data.code as number | undefined,
     };
   } catch (error) {
     console.error("Send bulk SMS error:", error);
     return {
       success: false,
       error:
-        error instanceof Error
-          ? error.message
-          : "An error occurred while sending bulk SMS",
+        error instanceof Error ? error.message : "An error occurred while sending bulk SMS",
     };
   }
 }
 
-// Send bulk SMS with different messages
+// ─── Send bulk SMS (different messages) ───────────────────────────────────────
+
 export async function sendBulkSMSCustom(smsData: {
   messages: Array<{ number: string; message: string }>;
   senderId?: string;
@@ -164,53 +172,40 @@ export async function sendBulkSMSCustom(smsData: {
 }): Promise<SMSResponse> {
   try {
     const headers = await getAuthHeaders();
-
     const response = await fetch(`${API_URL}/api/sms/bulk/custom`, {
       method: "POST",
       headers,
       body: JSON.stringify(smsData),
     });
 
-    const contentType = response.headers.get("content-type");
-    let data;
+    const { ok, data } = await parseResponse(response, "Failed to send bulk SMS");
 
-    if (contentType && contentType.includes("application/json")) {
-      data = await response.json();
-    } else {
-      const text = await response.text();
-      console.error("Non-JSON response:", text.substring(0, 200));
+    if (!ok) {
       return {
         success: false,
-        error: `API endpoint not found. Status: ${response.status}. Please ensure the backend SMS API is implemented.`,
-      };
-    }
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: data.message || "Failed to send bulk SMS",
+        error: (data.message as string) || "Failed to send bulk SMS",
+        code: data.code as number | undefined,
       };
     }
 
     return {
       success: true,
-      message: data.message || "Bulk SMS sent successfully",
+      message: (data.message as string) || "Bulk SMS sent successfully",
       data: data.data,
-      code: data.code,
+      code: data.code as number | undefined,
     };
   } catch (error) {
     console.error("Send bulk SMS custom error:", error);
     return {
       success: false,
       error:
-        error instanceof Error
-          ? error.message
-          : "An error occurred while sending bulk SMS",
+        error instanceof Error ? error.message : "An error occurred while sending bulk SMS",
     };
   }
 }
 
-// Send SMS to students by filter
+// ─── Send SMS to students ──────────────────────────────────────────────────────
+
 export async function sendSMSToStudents(smsData: {
   message: string;
   filters?: {
@@ -223,39 +218,27 @@ export async function sendSMSToStudents(smsData: {
 }): Promise<SMSResponse> {
   try {
     const headers = await getAuthHeaders();
-
     const response = await fetch(`${API_URL}/api/sms/send/students`, {
       method: "POST",
       headers,
       body: JSON.stringify(smsData),
     });
 
-    const contentType = response.headers.get("content-type");
-    let data;
+    const { ok, data } = await parseResponse(response, "Failed to send SMS to students");
 
-    if (contentType && contentType.includes("application/json")) {
-      data = await response.json();
-    } else {
-      const text = await response.text();
-      console.error("Non-JSON response:", text.substring(0, 200));
+    if (!ok) {
       return {
         success: false,
-        error: `API endpoint not found. Status: ${response.status}. Please ensure the backend SMS API is implemented.`,
-      };
-    }
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: data.message || "Failed to send SMS to students",
+        error: (data.message as string) || "Failed to send SMS to students",
+        code: data.code as number | undefined,
       };
     }
 
     return {
       success: true,
-      message: data.message || "SMS sent to students successfully",
+      message: (data.message as string) || "SMS sent to students successfully",
       data: data.data,
-      code: data.code,
+      code: data.code as number | undefined,
     };
   } catch (error) {
     console.error("Send SMS to students error:", error);
@@ -269,7 +252,8 @@ export async function sendSMSToStudents(smsData: {
   }
 }
 
-// Get SMS history
+// ─── Get SMS history ───────────────────────────────────────────────────────────
+
 export async function getSMSHistory(
   page: number = 1,
   limit: number = 50,
@@ -300,45 +284,32 @@ export async function getSMSHistory(
       cache: "no-store",
     });
 
-    const contentType = response.headers.get("content-type");
-    let data;
+    const { ok, data } = await parseResponse(response, "Failed to fetch SMS history");
 
-    if (contentType && contentType.includes("application/json")) {
-      data = await response.json();
-    } else {
-      const text = await response.text();
-      console.error("Non-JSON response:", text.substring(0, 200));
+    if (!ok) {
       return {
         success: false,
-        error: `API endpoint not found. Status: ${response.status}. Please ensure the backend SMS API is implemented.`,
-      };
-    }
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: data.message || "Failed to fetch SMS history",
+        error: (data.message as string) || "Failed to fetch SMS history",
       };
     }
 
     return {
       success: true,
       data: data.data,
-      pagination: data.pagination,
+      pagination: data.pagination as SMSResponse["pagination"],
     };
   } catch (error) {
     console.error("Get SMS history error:", error);
     return {
       success: false,
       error:
-        error instanceof Error
-          ? error.message
-          : "An error occurred while fetching SMS history",
+        error instanceof Error ? error.message : "An error occurred while fetching SMS history",
     };
   }
 }
 
-// Get SMS statistics
+// ─── Get SMS statistics ────────────────────────────────────────────────────────
+
 export async function getSMSStats(filters?: {
   startDate?: string;
   endDate?: string;
@@ -357,24 +328,12 @@ export async function getSMSStats(filters?: {
       cache: "no-store",
     });
 
-    const contentType = response.headers.get("content-type");
-    let data;
+    const { ok, data } = await parseResponse(response, "Failed to fetch SMS statistics");
 
-    if (contentType && contentType.includes("application/json")) {
-      data = await response.json();
-    } else {
-      const text = await response.text();
-      console.error("Non-JSON response:", text.substring(0, 200));
+    if (!ok) {
       return {
         success: false,
-        error: `API endpoint not found. Status: ${response.status}. Please ensure the backend SMS API is implemented.`,
-      };
-    }
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: data.message || "Failed to fetch SMS statistics",
+        error: (data.message as string) || "Failed to fetch SMS statistics",
       };
     }
 

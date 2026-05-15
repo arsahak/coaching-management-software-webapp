@@ -395,8 +395,32 @@ export async function getAdmissionStats(): Promise<AdmissionResponse> {
   }
 }
 
-// Get unique batch list
-export async function getBatchList(): Promise<{
+// Get unique class list
+export async function getClassList(): Promise<{
+  success: boolean;
+  data?: string[];
+  error?: string;
+}> {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_URL}/api/admission/classes`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      return { success: false, error: data.message || "Failed to fetch class list" };
+    }
+    return { success: true, data: data.data };
+  } catch (error) {
+    console.error("Get class list error:", error);
+    return { success: false, error: "An error occurred while fetching class list" };
+  }
+}
+
+// Get unique batch list from admissions (optional class narrows to that class only)
+export async function getBatchList(className?: string): Promise<{
   success: boolean;
   data?: string[];
   error?: string;
@@ -404,7 +428,12 @@ export async function getBatchList(): Promise<{
   try {
     const headers = await getAuthHeaders();
 
-    const response = await fetch(`${API_URL}/api/admission/batches`, {
+    const qs =
+      typeof className === "string" && className.trim().length > 0
+        ? `?${new URLSearchParams({ class: className.trim() }).toString()}`
+        : "";
+
+    const response = await fetch(`${API_URL}/api/admission/batches${qs}`, {
       method: "GET",
       headers,
       cache: "no-store",

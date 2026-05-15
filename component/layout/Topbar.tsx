@@ -1,10 +1,12 @@
 "use client";
 
+import NotificationBell from "@/component/layout/NotificationBell";
 import { useLanguage } from "@/lib/LanguageContext";
 import { useSidebar } from "@/lib/SidebarContext";
 import { getTranslation } from "@/lib/translations";
 import { signOut, useSession } from "next-auth/react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 import toast from "react-hot-toast";
@@ -12,7 +14,6 @@ import {
   IoMdArrowDown,
   IoMdLogOut,
   IoMdMenu,
-  IoMdNotifications,
   IoMdPerson,
   IoMdSearch,
   IoMdSettings,
@@ -77,7 +78,7 @@ export default function Topbar() {
     setLanguage(newLanguage);
     setShowLanguageMenu(false);
     toast.success(
-      `Language changed to ${newLanguage === "en" ? "English" : "বাংলা"}`
+      `Language changed to ${newLanguage === "en" ? "English" : "বাংলা"}`,
     );
   };
 
@@ -178,8 +179,8 @@ export default function Topbar() {
                         ? "bg-blue-900 text-blue-300"
                         : "bg-blue-50 text-blue-600"
                       : isDarkMode
-                      ? "text-gray-300 hover:bg-gray-700"
-                      : "text-gray-700 hover:bg-gray-50"
+                        ? "text-gray-300 hover:bg-gray-700"
+                        : "text-gray-700 hover:bg-gray-50"
                   }`}
                 >
                   🇺🇸 English
@@ -192,8 +193,8 @@ export default function Topbar() {
                         ? "bg-blue-900 text-blue-300"
                         : "bg-blue-50 text-blue-600"
                       : isDarkMode
-                      ? "text-gray-300 hover:bg-gray-700"
-                      : "text-gray-700 hover:bg-gray-50"
+                        ? "text-gray-300 hover:bg-gray-700"
+                        : "text-gray-700 hover:bg-gray-50"
                   }`}
                 >
                   🇧🇩 বাংলা
@@ -203,31 +204,17 @@ export default function Topbar() {
           </div>
 
           {/* Notifications */}
-          <button
-            className={`relative p-2 rounded-lg transition-colors ${
-              isDarkMode ? "hover:bg-gray-800" : "hover:bg-gray-50"
-            }`}
-          >
-            <IoMdNotifications
-              className={`w-5 h-5 ${
-                isDarkMode ? "text-gray-300" : "text-gray-600"
-              }`}
-            />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-          </button>
+          <NotificationBell />
 
           {/* Settings */}
-          <button
+          <Link
             className={`p-2 rounded-lg transition-colors ${
               isDarkMode ? "hover:bg-gray-800" : "hover:bg-gray-50"
             }`}
+            href="/settings"
           >
-            <IoMdSettings
-              className={`w-5 h-5 ${
-                isDarkMode ? "text-gray-300" : "text-gray-600"
-              }`}
-            />
-          </button>
+            <IoMdSettings className="w-5 h-5" title="Settings" />
+          </Link>
 
           {/* Profile Dropdown (Logout only) */}
           <div className="relative" data-profile-dropdown>

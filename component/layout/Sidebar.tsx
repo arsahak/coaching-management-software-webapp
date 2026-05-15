@@ -13,7 +13,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BiUser } from "react-icons/bi";
-import { FaSms, FaUserPlus } from "react-icons/fa";
+import { FaEnvelopeOpen, FaSms, FaUserPlus } from "react-icons/fa";
 import {
   IoIosArrowDown,
   IoMdDocument,
@@ -44,6 +44,11 @@ const getMenuItems = (language: string): MenuItem[] => [
     icon: <FaUserPlus className="w-5 h-5" />,
     label: getTranslation("admission", language),
     path: "/admission",
+  },
+  {
+    icon: <FaEnvelopeOpen className="w-5 h-5" />,
+    label: getTranslation("admissionInquiry", language),
+    path: "/admission-inquiry",
   },
   {
     icon: <IoMdPeople className="w-5 h-5" />,

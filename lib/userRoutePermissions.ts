@@ -14,6 +14,12 @@ const ROUTE_CONFIG: Array<{
   route: string;
 }> = [
   { id: "admission", nameKey: "permAdmission", descKey: "permAdmissionDesc", route: "/admission" },
+  {
+    id: "admission-inquiry",
+    nameKey: "permAdmissionInquiry",
+    descKey: "permAdmissionInquiryDesc",
+    route: "/admission-inquiry",
+  },
   { id: "student", nameKey: "permStudent", descKey: "permStudentDesc", route: "/student" },
   { id: "exam", nameKey: "permExam", descKey: "permExamDesc", route: "/exam" },
   { id: "fee", nameKey: "permFee", descKey: "permFeeDesc", route: "/fee" },

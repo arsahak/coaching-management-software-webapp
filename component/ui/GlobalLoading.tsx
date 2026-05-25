@@ -1,7 +1,6 @@
 "use client";
 
 import { useLanguage } from "@/lib/LanguageContext";
-import { useSidebar } from "@/lib/SidebarContext";
 import { getTranslation } from "@/lib/translations";
 
 type GlobalLoadingProps = {
@@ -18,7 +17,6 @@ export default function GlobalLoading({
   subtitleKey = "loadingApp",
   embedded = false,
 }: GlobalLoadingProps) {
-  const { isDarkMode } = useSidebar();
   const { language } = useLanguage();
   const t = (key: string) => getTranslation(key, language);
   const isFullscreen = variant === "fullscreen";
@@ -35,36 +33,20 @@ export default function GlobalLoading({
       aria-live="polite"
       aria-busy="true"
       className={`flex flex-col items-center justify-center ${heightClass} ${
-        embedded ? "" : isDarkMode ? "bg-gray-900" : "bg-gray-50"
+        embedded ? "" : "bg-gray-50 dark:bg-gray-900"
       }`}
     >
       <div className="relative flex flex-col items-center gap-5 px-6">
         <div className="relative">
-          <div
-            className={`absolute inset-0 rounded-full blur-xl opacity-40 ${
-              isDarkMode ? "bg-indigo-500" : "bg-blue-400"
-            }`}
-          />
-          <div
-            className={`relative h-14 w-14 rounded-full border-[3px] border-t-transparent animate-spin ${
-              isDarkMode ? "border-indigo-400" : "border-blue-600"
-            }`}
-          />
+          <div className="absolute inset-0 rounded-full blur-xl opacity-40 bg-blue-400 dark:bg-indigo-500" />
+          <div className="relative h-14 w-14 rounded-full border-[3px] border-t-transparent animate-spin border-blue-600 dark:border-indigo-400" />
         </div>
 
         <div className="text-center space-y-1">
-          <p
-            className={`text-base font-semibold tracking-tight ${
-              isDarkMode ? "text-gray-100" : "text-gray-900"
-            }`}
-          >
+          <p className="text-base font-semibold tracking-tight text-gray-900 dark:text-gray-100">
             {t(titleKey)}
           </p>
-          <p
-            className={`text-sm max-w-xs ${
-              isDarkMode ? "text-gray-400" : "text-gray-500"
-            }`}
-          >
+          <p className="text-sm max-w-xs text-gray-500 dark:text-gray-400">
             {t(subtitleKey)}
           </p>
         </div>
@@ -73,9 +55,7 @@ export default function GlobalLoading({
           {[0, 1, 2].map((i) => (
             <span
               key={i}
-              className={`h-2 w-2 rounded-full animate-bounce ${
-                isDarkMode ? "bg-indigo-400" : "bg-blue-600"
-              }`}
+              className="h-2 w-2 rounded-full animate-bounce bg-blue-600 dark:bg-indigo-400"
               style={{ animationDelay: `${i * 150}ms` }}
             />
           ))}

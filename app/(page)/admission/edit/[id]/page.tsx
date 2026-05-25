@@ -2,6 +2,8 @@ import { getAdmissionById } from "@/app/actions/admission";
 import AdmissionFormPage from "@/component/admissionManagement/AdmissionFormPage";
 import { notFound } from "next/navigation";
 
+export const dynamic = "force-dynamic";
+
 interface EditAdmissionPageProps {
   params: Promise<{
     id: string;

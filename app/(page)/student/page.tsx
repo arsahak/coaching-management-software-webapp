@@ -1,6 +1,8 @@
 import StudentAttendanceManagement from "@/component/studentManagement/StudentAttendanceManagement";
 import { Suspense } from "react";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = {
   title: "Student Attendance | Coaching Center",
   description: "Manage student attendance records",

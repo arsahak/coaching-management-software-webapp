@@ -1,5 +1,7 @@
 import AdmissionFormPage from "@/component/admissionManagement/AdmissionFormPage";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = {
   title: "Add New Admission | Coaching Center",
   description: "Create a new student admission",

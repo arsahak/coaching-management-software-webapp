@@ -1,6 +1,8 @@
 import ExamManagement from "@/component/ExamManagement/ExamManagement";
 import { Suspense } from "react";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = {
   title: "Exam Management | Coaching Center",
   description: "Manage exam schedules, results, and SMS notifications",
